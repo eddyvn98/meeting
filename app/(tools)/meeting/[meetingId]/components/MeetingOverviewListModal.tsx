@@ -14,10 +14,12 @@ export function MeetingOverviewListModal({
 	title,
 	onClose,
 	children,
+	footer,
 }: {
 	title: string;
 	onClose: () => void;
 	children: ReactNode;
+	footer?: ReactNode;
 }) {
 	// Esc closes the dialog, like the X button and a click on the backdrop.
 	useEffect(() => {
@@ -52,6 +54,7 @@ export function MeetingOverviewListModal({
 					</button>
 				</div>
 				<div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+				{footer && <div className="mt-3 shrink-0 border-t border-border pt-3">{footer}</div>}
 			</div>
 		</div>
 	);
