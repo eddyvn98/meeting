@@ -24,14 +24,22 @@ Create a **single-tenant** Microsoft Entra application for the background servic
 
 The runner uses OAuth 2.0 client credentials, so there is no interactive user sign-in.
 
-Required Microsoft Graph application permission:
+The integration needs the effective permission **Calendars.Read**. Choose one authorization model:
 
-- `Calendars.Read`
+### Option A - simple tenant-wide application permission
+
+For a quick internal test, add Microsoft Graph **Application** permission `Calendars.Read` to the Entra app and grant tenant admin consent.
+
+This is simple, but the application permission is broad unless the tenant applies a supported mailbox access restriction.
+
+### Option B - recommended production mailbox-scoped RBAC
+
+Use **Exchange Online RBAC for Applications** to assign `Application Calendars.Read` only to the approved mailbox scope.
+
+RBAC for Applications is independent from broad Entra application grants. If strict mailbox isolation is the goal, do not also leave an unscoped Entra `Calendars.Read` grant in place, because permission grants can combine.
 
 Do not add `Calendars.ReadWrite` unless the product later needs to modify Outlook events.
 Do not add `OnlineMeetings.Read.All` for this flow. The join URL is read from the Outlook event's `onlineMeeting.joinUrl`.
-
-After adding the application permission, an administrator must grant tenant admin consent.
 
 Microsoft documentation:
 
@@ -42,9 +50,9 @@ Microsoft documentation:
 
 ## Restrict the app to the intended mailbox
 
-A raw `Calendars.Read` application permission is tenant-wide. For production, scope the service principal to only the mailbox(es) that Meeting is allowed to read.
+For production, scope the service principal to only the mailbox(es) that Meeting is allowed to read.
 
-Microsoft's current recommended Exchange Online mechanism is **RBAC for Applications**.
+Microsoft's current Exchange Online mechanism for granular app-only mailbox access is **RBAC for Applications**.
 
 Typical administrator flow:
 
@@ -57,7 +65,7 @@ Official guide:
 
 https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac
 
-Do not combine broad unscoped Entra calendar grants with a narrow Exchange RBAC assignment if the goal is strict mailbox isolation; the administrator should follow the organization's chosen Microsoft-supported scoping model consistently.
+Do not combine a broad unscoped Entra calendar grant with a narrow RBAC assignment if the goal is strict mailbox isolation; use one deliberate authorization model and verify the resulting scope with `Test-ServicePrincipalAuthorization`.
 
 ## Configuration
 
