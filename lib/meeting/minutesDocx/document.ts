@@ -87,6 +87,7 @@ function buildAttendanceTable(attendance: AttendanceSectionItem[], labels: Minut
   return `<w:tbl>
     <w:tblPr>
       <w:tblW w:w="${CONTENT_WIDTH_DXA}" w:type="dxa"/>
+      <w:tblLayout w:type="fixed"/>
       <w:tblBorders>
         <w:top w:val="single" w:sz="4" w:color="666666"/>
         <w:left w:val="single" w:sz="4" w:color="666666"/>
@@ -109,7 +110,7 @@ function buildAttendanceTable(attendance: AttendanceSectionItem[], labels: Minut
 }
 
 // Minutes table: S/N | Matter Discussed | Action to be taken | Responsible
-// at 5% / 50% / 27% / 18% of content width.
+// at 7% / 48% / 27% / 18% of content width.
 const MINUTES_COLS = {
   sn: Math.round(CONTENT_WIDTH_DXA * 0.07),
   matter: Math.round(CONTENT_WIDTH_DXA * 0.48),
@@ -117,6 +118,7 @@ const MINUTES_COLS = {
   responsible: 0,
 };
 MINUTES_COLS.responsible = CONTENT_WIDTH_DXA - MINUTES_COLS.sn - MINUTES_COLS.matter - MINUTES_COLS.action;
+const MINUTES_SPAN_WIDTH_DXA = MINUTES_COLS.matter + MINUTES_COLS.action + MINUTES_COLS.responsible;
 
 function buildMinutesHeaderRow(labels: MinutesLabels): string {
   return row(
@@ -137,13 +139,13 @@ function buildMatterRows(matter: MinutesMatter, matterIndex: number, labels: Min
       widthDxa: MINUTES_COLS.sn,
       centerVertical: true,
     }) +
-      cell(paragraph([run(matter.title.toUpperCase(), { bold: true })]), { widthDxa: MINUTES_COLS.matter, gridSpan: 3 }),
+      cell(paragraph([run(matter.title.toUpperCase(), { bold: true })]), { widthDxa: MINUTES_SPAN_WIDTH_DXA, gridSpan: 3 }),
   );
 
   if (matter.rows.length === 0) {
     return `${heading}${row(
       cell(paragraph(""), { widthDxa: MINUTES_COLS.sn }) +
-        cell(paragraph([run(labels.noDetails, { italic: true })]), { widthDxa: MINUTES_COLS.matter, gridSpan: 3 }),
+        cell(paragraph([run(labels.noDetails, { italic: true })]), { widthDxa: MINUTES_SPAN_WIDTH_DXA, gridSpan: 3 }),
     )}`;
   }
 
@@ -184,7 +186,7 @@ function buildMinutesTable(matters: MinutesMatter[], labels: MinutesLabels): str
       ? row(
           cell(paragraph(""), { widthDxa: MINUTES_COLS.sn }) +
             cell(paragraph([run(labels.noMinutes, { italic: true })]), {
-              widthDxa: MINUTES_COLS.matter,
+              widthDxa: MINUTES_SPAN_WIDTH_DXA,
               gridSpan: 3,
             }),
         )
@@ -193,6 +195,7 @@ function buildMinutesTable(matters: MinutesMatter[], labels: MinutesLabels): str
   return `<w:tbl>
     <w:tblPr>
       <w:tblW w:w="${CONTENT_WIDTH_DXA}" w:type="dxa"/>
+      <w:tblLayout w:type="fixed"/>
       <w:tblBorders>
         <w:top w:val="single" w:sz="4" w:color="666666"/>
         <w:left w:val="single" w:sz="4" w:color="666666"/>

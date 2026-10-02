@@ -5,7 +5,7 @@ import type { MinutesHeaderFields } from "@/lib/meeting/minutesTypes";
 import { resolveMinutesLabels, type MinutesLabels } from "@/lib/meeting/minutesLabels";
 
 const fieldClass =
-  "w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm text-foreground outline-none read-only:cursor-default focus:border-primary focus:bg-background print:border-none";
+  "w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm text-foreground outline-none read-only:cursor-default focus:border-primary focus:bg-background print:hidden";
 
 function Field({
   label,
@@ -30,6 +30,7 @@ function Field({
         onChange={(e) => onChange(e.target.value)}
         placeholder={canEdit ? placeholder : "—"}
       />
+      <span className="hidden whitespace-pre-wrap break-words text-sm print:block">{value || "—"}</span>
     </div>
   );
 }
@@ -53,13 +54,16 @@ export function MinutesHeader({
   return (
     <div className="flex flex-col gap-4 border-b border-border pb-4">
       <input
-        className="w-full rounded-md border border-transparent bg-transparent px-1 py-1 text-center text-lg font-bold uppercase tracking-wide text-foreground outline-none read-only:cursor-default focus:border-primary focus:bg-background print:border-none"
+        className="w-full rounded-md border border-transparent bg-transparent px-1 py-1 text-center text-lg font-bold uppercase tracking-wide text-foreground outline-none read-only:cursor-default focus:border-primary focus:bg-background print:hidden"
         value={minutes.title ?? ""}
         readOnly={!canEdit}
         onChange={(e) => onChange("title", e.target.value)}
         placeholder="MINUTES OF <MEETING TITLE>"
       />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <h1 className="hidden whitespace-pre-wrap break-words text-center text-lg font-bold uppercase tracking-wide print:block">
+        {minutes.title || "MINUTES OF MEETING"}
+      </h1>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 print:grid-cols-3">
         <Field label={labels.meetingDate} value={minutes.meetingDate} canEdit={canEdit} onChange={(v) => onChange("meetingDate", v)} placeholder="e.g. 23 Sep 2026" />
         <Field label={labels.meetingTime} value={minutes.timeRange} canEdit={canEdit} onChange={(v) => onChange("timeRange", v)} placeholder="e.g. 09:00 - 10:30" />
         <Field label={labels.meetingVenue} value={minutes.venue} canEdit={canEdit} onChange={(v) => onChange("venue", v)} placeholder="e.g. Room 401 / Online" />
