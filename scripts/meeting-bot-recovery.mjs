@@ -35,7 +35,9 @@ export function createTeamsRecovery({
         lastError = error;
         await closeTeams(next);
         const code = errorCode(error);
-        if (code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED") throw error;
+        if (["TEAMS_JOIN_REJECTED", "TEAMS_REMOVED", "TEAMS_ACCESS_DENIED", "TEAMS_INVALID_LINK"].includes(code)) {
+          throw error;
+        }
         await sleep(5_000);
       }
     }
@@ -76,7 +78,9 @@ export function createTeamsRecovery({
         if (await confirmSomeoneElseIsPresent(runtime.page)) return runtime;
       } catch (error) {
         const code = errorCode(error);
-        if (code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED") throw error;
+        if (["TEAMS_JOIN_REJECTED", "TEAMS_REMOVED", "TEAMS_ACCESS_DENIED", "TEAMS_INVALID_LINK"].includes(code)) {
+          throw error;
+        }
       }
 
       await closeTeams(runtime);
