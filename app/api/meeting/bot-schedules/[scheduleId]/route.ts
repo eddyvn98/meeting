@@ -8,6 +8,8 @@ import {
 } from "@/lib/meeting/bot/recurrence";
 import { cleanMeetingTitle, normalizeTeamsMeetingUrl } from "@/lib/meeting/bot/teamsUrl";
 
+const ACTIVE_BOT_STATUSES = ["CLAIMED", "JOINING", "LOBBY", "JOINED", "CAPTURING"] as const;
+
 function parseOptionalDate(value: unknown): Date | null | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string") return null;
@@ -105,6 +107,24 @@ export async function PATCH(
         status: "REQUESTED",
       },
     });
+    const stopActive =
+      body.enabled === false ||
+      parsedStart !== undefined ||
+      body.meetingUrl !== undefined;
+    if (stopActive) {
+      await prisma.meetingBotSession.updateMany({
+        where: {
+          source: "SCHEDULE",
+          sourceKey: { startsWith: `${schedule.id}:` },
+          status: { in: [...ACTIVE_BOT_STATUSES] },
+        },
+        data: {
+          status: "STOP_REQUESTED",
+          lastHeartbeatAt: new Date(),
+          errorMessage: "The internal meeting schedule was changed or disabled.",
+        },
+      });
+    }
   } else if (body.meetingUrl !== undefined || body.title !== undefined) {
     await prisma.meetingBotSession.updateMany({
       where: {
@@ -152,6 +172,18 @@ export async function DELETE(
       source: "SCHEDULE",
       sourceKey: { startsWith: `${schedule.id}:` },
       status: "REQUESTED",
+    },
+  });
+  await prisma.meetingBotSession.updateMany({
+    where: {
+      source: "SCHEDULE",
+      sourceKey: { startsWith: `${schedule.id}:` },
+      status: { in: [...ACTIVE_BOT_STATUSES] },
+    },
+    data: {
+      status: "STOP_REQUESTED",
+      lastHeartbeatAt: new Date(),
+      errorMessage: "The internal meeting schedule was deleted.",
     },
   });
 
