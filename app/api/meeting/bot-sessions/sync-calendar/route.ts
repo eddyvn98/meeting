@@ -140,34 +140,26 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    if (!existing) {
-      await prisma.meetingBotSession.create({
-        data: {
-          ownerEmail,
-          meetingUrl,
-          title: cleanMeetingTitle(item.title),
-          source: "CALENDAR",
-          sourceKey: key,
-          scheduledAt,
-        },
-      });
-      stats.created += 1;
-      continue;
-    }
-
-    if (existing.status === "REQUESTED") {
-      await prisma.meetingBotSession.update({
-        where: { id: existing.id },
-        data: {
-          ownerEmail,
-          meetingUrl,
-          title: cleanMeetingTitle(item.title),
-          scheduledAt,
-          errorMessage: null,
-        },
-      });
-      stats.updated += 1;
-    }
+    await prisma.meetingBotSession.upsert({
+      where: { source_sourceKey: { source: "CALENDAR", sourceKey: key } },
+      update: {
+        ownerEmail,
+        meetingUrl,
+        title: cleanMeetingTitle(item.title),
+        scheduledAt,
+        ...(existing?.status === "REQUESTED" ? { errorMessage: null } : {}),
+      },
+      create: {
+        ownerEmail,
+        meetingUrl,
+        title: cleanMeetingTitle(item.title),
+        source: "CALENDAR",
+        sourceKey: key,
+        scheduledAt,
+      },
+    });
+    if (existing) stats.updated += 1;
+    else stats.created += 1;
   }
 
   const queued = await prisma.meetingBotSession.findMany({
