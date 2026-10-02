@@ -72,6 +72,17 @@ export async function POST(req: NextRequest) {
     ? nextMeetingScheduleAtOrAfter(startAt, repeat, new Date(now.getTime() - 60_000), timezoneOffsetMin)
     : null;
 
+  const existing = await prisma.meetingBotSchedule.findFirst({
+    where: {
+      ownerEmail: email,
+      meetingUrl,
+      startAt,
+      repeat,
+      enabled: true,
+    },
+  });
+  if (existing) return NextResponse.json(serializeMeetingBotSchedule(existing));
+
   const schedule = await prisma.meetingBotSchedule.create({
     data: {
       ownerEmail: email,
