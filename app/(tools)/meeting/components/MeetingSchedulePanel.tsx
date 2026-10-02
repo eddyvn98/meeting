@@ -40,7 +40,6 @@ export function MeetingSchedulePanel() {
   const [message, setMessage] = useState<string | null>(null);
 
   const minStart = useMemo(() => toLocalInputValue(new Date(Date.now() - 4 * 60_000)), []);
-
   async function loadSchedules() {
     const response = await fetch("/api/meeting/bot-schedules", { cache: "no-store" });
     if (!response.ok) return;
@@ -52,7 +51,6 @@ export function MeetingSchedulePanel() {
     const timer = window.setInterval(() => void loadSchedules().catch(() => undefined), 15_000);
     return () => window.clearInterval(timer);
   }, []);
-
   function applyPaste(value: string) {
     setSourceText(value);
     const parsed = parseTeamsInvitation(value);
