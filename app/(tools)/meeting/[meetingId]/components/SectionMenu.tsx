@@ -25,13 +25,20 @@ export function SectionMenu({
   generating?: boolean;
 }) {
   return (
-    <DropdownMenu>
+    <div className="ml-auto flex items-center gap-1.5">
+      {generating && (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px] font-medium text-muted-foreground" role="status">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          AI generating…
+        </span>
+      )}
+      <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
           aria-label="Section actions"
           title="Section actions"
-          className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-60 transition-opacity hover:bg-muted hover:text-foreground hover:opacity-100 focus-visible:opacity-100 group-hover/card:opacity-100 data-[state=open]:opacity-100"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-60 transition-opacity hover:bg-muted hover:text-foreground hover:opacity-100 focus-visible:opacity-100 group-hover/card:opacity-100 data-[state=open]:opacity-100"
         >
           <MoreHorizontal className="h-4 w-4" />
         </button>
@@ -57,6 +64,7 @@ export function SectionMenu({
           <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete section
         </DropdownMenuItem>
       </DropdownMenuContent>
-    </DropdownMenu>
+      </DropdownMenu>
+    </div>
   );
 }
