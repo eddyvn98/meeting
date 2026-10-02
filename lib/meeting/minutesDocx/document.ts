@@ -110,7 +110,7 @@ function buildAttendanceTable(attendance: AttendanceSectionItem[], labels: Minut
 }
 
 // Minutes table: S/N | Matter Discussed | Action to be taken | Responsible
-// at 5% / 50% / 27% / 18% of content width.
+// at 7% / 48% / 27% / 18% of content width.
 const MINUTES_COLS = {
   sn: Math.round(CONTENT_WIDTH_DXA * 0.07),
   matter: Math.round(CONTENT_WIDTH_DXA * 0.48),
@@ -186,7 +186,7 @@ function buildMinutesTable(matters: MinutesMatter[], labels: MinutesLabels): str
       ? row(
           cell(paragraph(""), { widthDxa: MINUTES_COLS.sn }) +
             cell(paragraph([run(labels.noMinutes, { italic: true })]), {
-              widthDxa: MINUTES_COLS.matter,
+              widthDxa: MINUTES_SPAN_WIDTH_DXA,
               gridSpan: 3,
             }),
         )
