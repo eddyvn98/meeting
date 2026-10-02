@@ -49,42 +49,51 @@ export function BulletList({
   const set = (index: number, text: string) => onChange(items.map((x, j) => (j === index ? text : x)));
 
   return (
-    <ul className="flex flex-col gap-0.5">
-      {items.map((b, i) => (
-        <li key={i} className="flex items-start gap-1">
-          <span className="select-none pt-0.5 text-muted-foreground">•</span>
-          <AutoTextarea
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
-            className={cellTextClass}
-            value={b}
-            placeholder={i === 0 ? "Type here…" : undefined}
-            onChange={(e) => set(i, e.target.value)}
-            onKeyDown={(e) => {
-              if (isPlainEnter(e)) {
-                e.preventDefault();
-                const at = e.currentTarget.selectionStart;
-                const next = [...items];
-                next.splice(i, 1, b.slice(0, at), b.slice(at));
-                onChange(next);
-                setFocusAt({ index: i + 1, caret: "start" });
-              } else if (e.key === "Backspace" && b === "") {
-                e.preventDefault();
-                if (items.length > 1) {
-                  onChange(items.filter((_, j) => j !== i));
-                  setFocusAt({ index: Math.max(0, i - 1), caret: "end" });
-                } else {
-                  onEmptyBackspace?.();
+    <>
+      <ul className="flex flex-col gap-0.5 print:hidden">
+        {items.map((b, i) => (
+          <li key={i} className="flex items-start gap-1">
+            <span className="select-none pt-0.5 text-muted-foreground">•</span>
+            <AutoTextarea
+              ref={(el) => {
+                refs.current[i] = el;
+              }}
+              className={cellTextClass}
+              value={b}
+              placeholder={i === 0 ? "Type here…" : undefined}
+              onChange={(e) => set(i, e.target.value)}
+              onKeyDown={(e) => {
+                if (isPlainEnter(e)) {
+                  e.preventDefault();
+                  const at = e.currentTarget.selectionStart;
+                  const next = [...items];
+                  next.splice(i, 1, b.slice(0, at), b.slice(at));
+                  onChange(next);
+                  setFocusAt({ index: i + 1, caret: "start" });
+                } else if (e.key === "Backspace" && b === "") {
+                  e.preventDefault();
+                  if (items.length > 1) {
+                    onChange(items.filter((_, j) => j !== i));
+                    setFocusAt({ index: Math.max(0, i - 1), caret: "end" });
+                  } else {
+                    onEmptyBackspace?.();
+                  }
                 }
-              }
-            }}
-            onBlur={() => {
-              if (b.trim() === "" && items.length > 1) onChange(items.filter((_, j) => j !== i));
-            }}
-          />
-        </li>
-      ))}
-    </ul>
+              }}
+              onBlur={() => {
+                if (b.trim() === "" && items.length > 1) onChange(items.filter((_, j) => j !== i));
+              }}
+            />
+          </li>
+        ))}
+      </ul>
+      {visible.length > 0 ? (
+        <ul className="hidden list-disc space-y-0.5 whitespace-pre-wrap break-words pl-4 text-sm print:block">
+          {visible.map((b, i) => <li key={i}>{b}</li>)}
+        </ul>
+      ) : (
+        <span className="hidden text-sm text-muted-foreground print:inline">—</span>
+      )}
+    </>
   );
 }
