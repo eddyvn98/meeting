@@ -36,7 +36,7 @@ See `docs/meeting-bot.md` for the runner and internal scheduler, and `docs/micro
 
 ### Optional Outlook calendar sync
 
-Microsoft Graph can automatically discover Teams meetings from one configured Outlook mailbox. The Graph path is independent of the internal scheduler and does not require a Teams custom app.
+Microsoft Graph can watch one dedicated shared mailbox such as `meetingbot@company.com`. Users invite that mailbox to a Teams meeting; the app reads only the bot mailbox calendar, assigns the meeting to the allowed organizer, and queues one browser bot join. The Graph path is independent of the internal scheduler and does not require a Teams custom app.
 
 After an administrator supplies the Entra application credentials and `Calendars.Read` application access, verify the connection with:
 
