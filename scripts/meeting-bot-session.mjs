@@ -180,7 +180,7 @@ export function createBotSessionRunner(config) {
             continue;
           }
         } else reconnectingSince = null;
-        if (await shouldStop(session.id)) {
+        if (await control.shouldStop(session.id)) {
           exitMessage = "The bot was stopped by the Meeting application.";
           break;
         }
