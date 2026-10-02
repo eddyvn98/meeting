@@ -25,6 +25,9 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
   if (session.runnerId !== runnerId(req)) {
     return NextResponse.json({ error: "Session is owned by another runner." }, { status: 409 });
   }
+  if (["ENDED", "FAILED"].includes(session.status)) {
+    return NextResponse.json(serializeMeetingBotSession(session));
+  }
   if (session.status === "STOP_REQUESTED" && !["STOP_REQUESTED", "ENDED", "FAILED"].includes(body.status)) {
     return NextResponse.json(serializeMeetingBotSession(session));
   }
