@@ -83,6 +83,16 @@ export function graphEventToSyncItem(event, config = null) {
     organizerEmail &&
     config?.allowedOrganizerDomains?.includes(organizerDomain),
   );
+  const attendeeAddresses = Array.isArray(event.attendees)
+    ? event.attendees
+        .map((attendee) => email(attendee?.emailAddress?.address))
+        .filter(Boolean)
+    : [];
+  const invited = Boolean(
+    event.isOrganizer !== true &&
+    config?.botEmail &&
+    attendeeAddresses.includes(config.botEmail),
+  );
 
   return {
     eventId: String(event.id),
@@ -94,6 +104,7 @@ export function graphEventToSyncItem(event, config = null) {
     organizerEmail,
     ownerEmail: organizerAllowed ? organizerEmail : null,
     organizerAllowed,
+    invited,
     cancelled: event.isCancelled === true || event.isAllDay === true,
     declined: event.responseStatus?.response === "declined",
   };
@@ -201,6 +212,7 @@ export function createGraphCalendarClient({ env = process.env, fetchImpl = fetch
         "onlineMeeting",
         "onlineMeetingUrl",
         "responseStatus",
+        "isOrganizer",
         "organizer",
         "attendees",
         "type",
