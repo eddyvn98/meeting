@@ -168,26 +168,54 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    await prisma.meetingBotSession.upsert({
-      where: { source_sourceKey: { source: "CALENDAR", sourceKey: key } },
-      update: {
-        ownerEmail,
-        meetingUrl,
-        title: cleanMeetingTitle(item.title),
-        scheduledAt,
-        ...(existing?.status === "REQUESTED" ? { errorMessage: null } : {}),
-      },
-      create: {
-        ownerEmail,
-        meetingUrl,
-        title: cleanMeetingTitle(item.title),
-        source: "CALENDAR",
-        sourceKey: key,
-        scheduledAt,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-bot:${meetingUrl}`}))`;
+
+      const current = await tx.meetingBotSession.findUnique({
+        where: { source_sourceKey: { source: "CALENDAR", sourceKey: key } },
+      });
+      if (current) {
+        await tx.meetingBotSession.update({
+          where: { id: current.id },
+          data: {
+            ownerEmail,
+            meetingUrl,
+            title: cleanMeetingTitle(item.title),
+            scheduledAt,
+            ...(current.status === "REQUESTED" ? { errorMessage: null } : {}),
+          },
+        });
+        stats.updated += 1;
+        return;
+      }
+
+      const conflict = await tx.meetingBotSession.findFirst({
+        where: {
+          meetingUrl,
+          scheduledAt: {
+            gte: new Date(scheduledAt.getTime() - 10 * 60_000),
+            lte: new Date(scheduledAt.getTime() + 10 * 60_000),
+          },
+        },
+        orderBy: { requestedAt: "asc" },
+      });
+      if (conflict) {
+        stats.ignored += 1;
+        return;
+      }
+
+      await tx.meetingBotSession.create({
+        data: {
+          ownerEmail,
+          meetingUrl,
+          title: cleanMeetingTitle(item.title),
+          source: "CALENDAR",
+          sourceKey: key,
+          scheduledAt,
+        },
+      });
+      stats.created += 1;
     });
-    if (existing) stats.updated += 1;
-    else stats.created += 1;
   }
 
   const queued = await prisma.meetingBotSession.findMany({
