@@ -152,6 +152,7 @@ model MeetingBotSchedule {
   meetingUrl      String                @db.Text
   title           String
   startAt         DateTime
+  timezoneOffsetMin Int                   @default(0)
   nextRunAt       DateTime?
   repeat          MeetingScheduleRepeat @default(NONE)
   enabled         Boolean               @default(true)
