@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 
 function runPactl(args, env = process.env) {
   return new Promise((resolve, reject) => {
@@ -19,7 +20,9 @@ export async function createPulseAudioSession(sessionKey) {
   if (process.platform !== "linux") {
     throw new Error("Unattended browser audio capture requires a Linux runner with PulseAudio.");
   }
-  const suffix = sessionKey.replace(/[^a-zA-Z0-9]/g, "").slice(-24);
+  const sessionSuffix = sessionKey.replace(/[^a-zA-Z0-9]/g, "").slice(-16);
+  const runSuffix = randomUUID().replace(/-/g, "").slice(0, 8);
+  const suffix = `${sessionSuffix}_${runSuffix}`;
   const sinkName = `teams_sink_${suffix}`;
   const sourceName = `teams_source_${suffix}`;
   const sinkModule = await runPactl([
