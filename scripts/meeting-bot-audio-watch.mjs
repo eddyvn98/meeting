@@ -1,0 +1,55 @@
+export async function maybeRecoverSilentAudio({
+  recorderRuntime,
+  reconnectTeams,
+  recorder,
+  teamsRuntime,
+  session,
+  heartbeat,
+  sink,
+  storageState,
+  participantCount,
+  lastRecoveryAt,
+  audioInitialWarnMs,
+  audioSilenceWarnMs,
+}) {
+  const health = await recorderRuntime.audioHealth(recorder);
+  if (!health) return { teamsRuntime, lastRecoveryAt };
+
+  const now = Date.now();
+  const noInitialSignal =
+    health.lastSignalAt === null &&
+    now - health.startedAt >= audioInitialWarnMs;
+  const staleSignal =
+    health.lastSignalAt !== null &&
+    now - health.lastSignalAt >= audioSilenceWarnMs;
+
+  if (!noInitialSignal && !staleSignal) return { teamsRuntime, lastRecoveryAt };
+  if (lastRecoveryAt && now - lastRecoveryAt < 10 * 60_000) {
+    return { teamsRuntime, lastRecoveryAt };
+  }
+
+  console.warn(
+    `[meeting-bot] session ${session.id} audio is silent; rms=${health.rms.toFixed(6)} peak=${health.peakRms.toFixed(6)}.`,
+  );
+
+  if (typeof participantCount !== "number" || participantCount <= 1) {
+    return { teamsRuntime, lastRecoveryAt: now };
+  }
+
+  await recorderRuntime.pause(recorder);
+  const recovered = await reconnectTeams(
+    teamsRuntime,
+    session,
+    heartbeat,
+    sink.sinkName,
+    storageState,
+  );
+  if (!recovered) {
+    const error = new Error("Teams audio route recovery stopped before rejoining.");
+    error.code = "TEAMS_RECOVERY_FAILED";
+    throw error;
+  }
+  await recorderRuntime.resume(recorder);
+
+  return { teamsRuntime: recovered, lastRecoveryAt: now };
+}
