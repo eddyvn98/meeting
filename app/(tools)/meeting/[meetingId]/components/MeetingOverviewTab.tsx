@@ -180,6 +180,8 @@ export function MeetingOverviewTab({
 					overview={summary.overview}
 					onSave={canEdit ? editor.updateOverview : undefined}
 					saving={canEdit && editor.savingOverview}
+					onRegenerate={canEdit ? () => void editor.regenerateSummary() : undefined}
+					regenerating={canEdit && editor.generatingSummary}
 				/>
 				{hasMinutes && (
 					<Link
@@ -230,7 +232,12 @@ export function MeetingOverviewTab({
 				)}
 			</div>
 			<div className="lg:col-span-1">
-				<MeetingTimelineCard topics={summary.topics} segments={segments} />
+				<MeetingTimelineCard
+					topics={summary.topics}
+					segments={segments}
+					onRegenerate={canEdit ? () => void editor.regenerateTimeline() : undefined}
+					regenerating={canEdit && editor.generatingTimeline}
+				/>
 			</div>
 		</div>
 	);
