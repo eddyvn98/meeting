@@ -234,6 +234,10 @@ export function createBotSessionRunner(config) {
           });
           teamsRuntime = audioRecovery.teamsRuntime;
           lastAudioRecoveryAt = audioRecovery.lastRecoveryAt;
+          if (!teamsRuntime) {
+            exitMessage = "The bot was stopped while recovering the Teams audio route.";
+            break;
+          }
         } catch (error) {
           if (!intentionalExit(error)) throw error;
           exitMessage = error instanceof Error ? error.message : "The bot was removed during audio recovery.";
