@@ -63,15 +63,17 @@ export interface Meeting {
    *  owner) — lets the sidebar row read "Shared with you" instead of
    *  "Shared". */
   sharedWithMe?: boolean;
-  /** Sidebar folder this meeting is filed under, or null when ungrouped —
-   *  see MeetingGroup below. */
+  /** Sidebar folder this meeting is filed under for the current caller, or
+   *  null when ungrouped. For owned meetings this comes from Meeting.groupId;
+   *  for shared-with-me rows GET /api/meeting overlays MeetingShare.groupId so
+   *  each recipient can organize the same meeting independently. */
   groupId: string | null;
 }
 
-/** A user-defined sidebar folder for organizing their own meetings
- *  (MeetingAside.tsx "New group" / "Move to group"). Deleting a group never
- *  deletes its meetings — see the Meeting.groupId FK's onDelete: SetNull in
- *  prisma/schema.prisma. */
+/** A user-defined personal sidebar folder for organizing owned or shared
+ *  meetings (MeetingAside.tsx "New group" / "Move to group"). Deleting a
+ *  group never deletes meetings — both Meeting.groupId and
+ *  MeetingShare.groupId use onDelete: SetNull in prisma/schema.prisma. */
 export interface MeetingGroup {
   id: string;
   ownerEmail: string;

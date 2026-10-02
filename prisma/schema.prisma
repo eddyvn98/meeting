@@ -218,7 +218,8 @@ model MeetingGroup {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  meetings Meeting[]
+  meetings       Meeting[]
+  sharedMeetings MeetingShare[]
 
   @@index([ownerEmail, order])
   @@map("meeting_groups")
@@ -361,11 +362,18 @@ model MeetingShare {
   /// which stays owner-only). Existing grants migrate to VIEWER, their prior
   /// behavior, unchanged.
   role         MeetingShareRole @default(VIEWER)
+  /// The recipient's own sidebar folder placement for this shared meeting.
+  /// This is deliberately separate from Meeting.groupId, which belongs to
+  /// the meeting owner. A recipient can therefore organize a shared meeting
+  /// without changing how it appears in the owner's sidebar.
+  groupId      String?
 
-  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  meeting Meeting       @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  group   MeetingGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
   @@unique([meetingId, invitedEmail])
   @@index([invitedEmail])
+  @@index([groupId])
   @@map("meeting_shares")
 }
 

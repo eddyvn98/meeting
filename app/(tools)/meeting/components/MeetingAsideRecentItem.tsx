@@ -46,10 +46,9 @@ import { AudioCountdownIcon } from "./AudioCountdownIcon";
  *
  * `meeting.isShared` (set by GET /api/meeting) shows a small share icon —
  * covers both "I shared this out" and "someone shared this with me".
- * `meeting.sharedWithMe` specifically means the latter, which also means
- * this row's viewer definitely isn't the owner, so the rename/delete
- * buttons (owner-only actions server-side anyway) are hidden rather than
- * left to fail.
+ * `meeting.sharedWithMe` specifically means the latter. Shared recipients
+ * still get "Move to group" because folder placement is personal to them;
+ * only rename/delete remain hidden because those mutate the owner's meeting.
  *
  * `retentionDays` (from useAudioRetentionDays, GET /api/meeting/storage-info)
  * swaps the leading document icon for an AudioCountdownIcon whenever this
@@ -179,7 +178,7 @@ export function MeetingAsideRecentItem({
 					</span>
 				)}
 			</Link>
-			{!meeting.sharedWithMe && (
+			{(!meeting.sharedWithMe || groups !== undefined) && (
 				<>
 					{/* Zero-width until the row is hovered/focused or the menu is open, so
 					    revealing "..." squeezes the title instead of covering the share icon. */}
@@ -200,9 +199,11 @@ export function MeetingAsideRecentItem({
 								</button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end" className="w-44" onCloseAutoFocus={(e) => e.preventDefault()}>
-								<DropdownMenuItem onSelect={startEditing}>
-									<Pencil className="mr-2 h-3.5 w-3.5" /> Rename
-								</DropdownMenuItem>
+								{!meeting.sharedWithMe && (
+									<DropdownMenuItem onSelect={startEditing}>
+										<Pencil className="mr-2 h-3.5 w-3.5" /> Rename
+									</DropdownMenuItem>
+								)}
 								{groups && (
 									<DropdownMenuSub>
 										<DropdownMenuSubTrigger>Move to group</DropdownMenuSubTrigger>
@@ -230,25 +231,31 @@ export function MeetingAsideRecentItem({
 										</DropdownMenuSubContent>
 									</DropdownMenuSub>
 								)}
-								<DropdownMenuSeparator />
-								<DropdownMenuItem onSelect={() => setConfirming(true)} className="text-red-600 focus:text-red-600">
-									<Trash2 className="mr-2 h-3.5 w-3.5" /> Delete
-								</DropdownMenuItem>
+								{!meeting.sharedWithMe && (
+									<>
+										<DropdownMenuSeparator />
+										<DropdownMenuItem onSelect={() => setConfirming(true)} className="text-red-600 focus:text-red-600">
+											<Trash2 className="mr-2 h-3.5 w-3.5" /> Delete
+										</DropdownMenuItem>
+									</>
+								)}
 							</DropdownMenuContent>
 						</DropdownMenu>
 					</div>
-					<AlertDialog open={confirming} onOpenChange={setConfirming}>
-						<AlertDialogContent>
-							<AlertDialogHeader>
-								<AlertDialogTitle>Delete this meeting?</AlertDialogTitle>
-								<AlertDialogDescription>&ldquo;{meeting.title}&rdquo; and its transcript, summary and minutes will be permanently deleted.</AlertDialogDescription>
-							</AlertDialogHeader>
-							<AlertDialogFooter>
-								<AlertDialogCancel>Cancel</AlertDialogCancel>
-								<AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
-							</AlertDialogFooter>
-						</AlertDialogContent>
-					</AlertDialog>
+					{!meeting.sharedWithMe && (
+						<AlertDialog open={confirming} onOpenChange={setConfirming}>
+							<AlertDialogContent>
+								<AlertDialogHeader>
+									<AlertDialogTitle>Delete this meeting?</AlertDialogTitle>
+									<AlertDialogDescription>&ldquo;{meeting.title}&rdquo; and its transcript, summary and minutes will be permanently deleted.</AlertDialogDescription>
+								</AlertDialogHeader>
+								<AlertDialogFooter>
+									<AlertDialogCancel>Cancel</AlertDialogCancel>
+									<AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+								</AlertDialogFooter>
+							</AlertDialogContent>
+						</AlertDialog>
+					)}
 				</>
 			)}
 		</li>

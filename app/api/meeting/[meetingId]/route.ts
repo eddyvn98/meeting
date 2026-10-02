@@ -74,18 +74,30 @@ export async function DELETE(req: NextRequest, { params }: { params: { meetingId
   return NextResponse.json({ ok: true });
 }
 
-/** PATCH /api/meeting/[meetingId] — owner-only. Renames the title and/or
- *  moves the meeting into a sidebar folder (`groupId`, MeetingAside.tsx's
- *  "Move to group" picker) — `null` un-files it back to the plain Recent
- *  list. Both fields are optional and independent; at least one must be
- *  present. A non-null `groupId` must point at a group the caller owns,
- *  same access rule as everything else here. */
+/** PATCH /api/meeting/[meetingId] — title changes stay owner-only, while
+ *  sidebar folder placement is personal to the current caller. Owners update
+ *  Meeting.groupId; recipients of an active share update MeetingShare.groupId,
+ *  so organizing a shared meeting never changes the owner's sidebar. */
 export async function PATCH(req: NextRequest, { params }: { params: { meetingId: string } }) {
   const email = await resolveMeetingCallerEmail(req);
   if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const meeting = await prisma.meeting.findUnique({ where: { id: params.meetingId } });
-  if (!meeting || meeting.ownerEmail.toLowerCase() !== email.toLowerCase()) {
+  if (!meeting) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const isOwner = meeting.ownerEmail.toLowerCase() === email.toLowerCase();
+  const now = new Date();
+  const activeShare = isOwner
+    ? null
+    : await prisma.meetingShare.findFirst({
+        where: {
+          meetingId: meeting.id,
+          invitedEmail: { equals: email, mode: "insensitive" },
+          revokedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+      });
+  if (!isOwner && !activeShare) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -96,31 +108,45 @@ export async function PATCH(req: NextRequest, { params }: { params: { meetingId:
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const data: { title?: string; groupId?: string | null } = {};
-
-  if (body.title !== undefined) {
-    const title = typeof body.title === "string" ? body.title.trim() : "";
-    if (!title) return NextResponse.json({ error: "title is required" }, { status: 400 });
-    data.title = title;
+  if (body.title === undefined && body.groupId === undefined) {
+    return NextResponse.json({ error: "title or groupId is required" }, { status: 400 });
   }
 
+  let groupId: string | null | undefined;
   if (body.groupId !== undefined) {
     if (body.groupId === null) {
-      data.groupId = null;
+      groupId = null;
     } else if (typeof body.groupId === "string") {
       const group = await prisma.meetingGroup.findUnique({ where: { id: body.groupId } });
       if (!group || group.ownerEmail.toLowerCase() !== email.toLowerCase()) {
         return NextResponse.json({ error: "Group not found" }, { status: 404 });
       }
-      data.groupId = group.id;
+      groupId = group.id;
     } else {
       return NextResponse.json({ error: "groupId must be a string or null" }, { status: 400 });
     }
   }
 
-  if (Object.keys(data).length === 0) {
-    return NextResponse.json({ error: "title or groupId is required" }, { status: 400 });
+  if (!isOwner) {
+    // Shared viewers/editors may organize the meeting in their own folders,
+    // but may not rename or otherwise mutate the owner's Meeting row.
+    if (body.title !== undefined) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    if (groupId === undefined || !activeShare) {
+      return NextResponse.json({ error: "groupId is required" }, { status: 400 });
+    }
+    await prisma.meetingShare.update({ where: { id: activeShare.id }, data: { groupId } });
+    return NextResponse.json({ ...serializeMeeting(meeting), groupId });
   }
+
+  const data: { title?: string; groupId?: string | null } = {};
+  if (body.title !== undefined) {
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    if (!title) return NextResponse.json({ error: "title is required" }, { status: 400 });
+    data.title = title;
+  }
+  if (groupId !== undefined) data.groupId = groupId;
 
   const updated = await prisma.meeting.update({ where: { id: params.meetingId }, data });
   return NextResponse.json(serializeMeeting(updated));

@@ -4,9 +4,9 @@ import { resolveMeetingCallerEmail } from "../../_auth";
 import { serializeMeeting, serializeMeetingGroup } from "@/lib/meeting/serialize";
 import type { UpdateMeetingGroupInput } from "@/lib/meeting/types";
 
-/** GET /api/meeting/groups/[groupId] — the group itself plus the caller's
- *  own meetings filed under it (newest first), for the group's page (list +
- *  "Ask across this group"). Owner-only, same as every other group action. */
+/** GET /api/meeting/groups/[groupId] — the caller's personal group,
+ *  containing both owned meetings filed through Meeting.groupId and meetings
+ *  shared with the caller that they filed through MeetingShare.groupId. */
 export async function GET(req: NextRequest, { params }: { params: { groupId: string } }) {
   const email = await resolveMeetingCallerEmail(req);
   if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -16,14 +16,37 @@ export async function GET(req: NextRequest, { params }: { params: { groupId: str
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const now = new Date();
+  const sharedPlacements = await prisma.meetingShare.findMany({
+    where: {
+      groupId: group.id,
+      invitedEmail: { equals: email, mode: "insensitive" },
+      revokedAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    select: { meetingId: true },
+  });
+  const sharedMeetingIds = sharedPlacements.map((s) => s.meetingId);
+  const sharedSet = new Set(sharedMeetingIds);
+
   const meetings = await prisma.meeting.findMany({
-    where: { groupId: group.id, ownerEmail: { equals: email, mode: "insensitive" } },
+    where: {
+      OR: [
+        { groupId: group.id, ownerEmail: { equals: email, mode: "insensitive" } },
+        { id: { in: sharedMeetingIds } },
+      ],
+    },
     orderBy: { createdAt: "desc" },
   });
 
   return NextResponse.json({
     group: serializeMeetingGroup(group),
-    meetings: meetings.map(serializeMeeting),
+    meetings: meetings.map((meeting) => ({
+      ...serializeMeeting(meeting),
+      groupId: group.id,
+      isShared: sharedSet.has(meeting.id),
+      sharedWithMe: sharedSet.has(meeting.id) && meeting.ownerEmail.toLowerCase() !== email.toLowerCase(),
+    })),
   });
 }
 
@@ -50,9 +73,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { groupId: s
   return NextResponse.json(serializeMeetingGroup(updated));
 }
 
-/** DELETE /api/meeting/groups/[groupId] — removes the folder only. Its
- *  meetings are never deleted: Meeting.groupId's onDelete: SetNull
- *  (prisma/schema.prisma) un-files them back to the plain Recent list. */
+/** DELETE /api/meeting/groups/[groupId] — removes the folder only. Owned
+ *  Meeting.groupId and recipient MeetingShare.groupId references both use
+ *  onDelete: SetNull, so deleting a personal folder never deletes meetings. */
 export async function DELETE(req: NextRequest, { params }: { params: { groupId: string } }) {
   const email = await resolveMeetingCallerEmail(req);
   if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
