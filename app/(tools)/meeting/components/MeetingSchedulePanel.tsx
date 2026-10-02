@@ -95,6 +95,7 @@ export function MeetingSchedulePanel() {
           meetingUrl,
           title,
           startAt: new Date(startLocal).toISOString(),
+          timezoneOffsetMin: new Date(startLocal).getTimezoneOffset(),
           repeat,
           ...(editingId ? {} : { enabled: true }),
         }),
