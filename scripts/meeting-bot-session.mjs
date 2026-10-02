@@ -238,9 +238,18 @@ export function createBotSessionRunner({
 
         if (!teamsRuntime?.browser.isConnected() || teamsRuntime.page.isClosed()) {
           await recorderRuntime.pause(recorder);
-          teamsRuntime = await reconnectTeams(
-            teamsRuntime, session, heartbeat, sink.sinkName, storageState,
-          );
+          try {
+            teamsRuntime = await reconnectTeams(
+              teamsRuntime, session, heartbeat, sink.sinkName, storageState,
+            );
+          } catch (error) {
+            const code = errorCode(error);
+            if (code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED") {
+              exitMessage = error instanceof Error ? error.message : "The bot was removed from Teams.";
+              break;
+            }
+            throw error;
+          }
           if (!teamsRuntime) break;
           await recorderRuntime.resume(recorder);
           continue;
@@ -257,9 +266,19 @@ export function createBotSessionRunner({
         }
         if (snapshot.state === "MEETING_ENDED") {
           await recorderRuntime.pause(recorder);
-          const restarted = await waitForMeetingRestart(
-            teamsRuntime, session, heartbeat, sink.sinkName, storageState,
-          );
+          let restarted;
+          try {
+            restarted = await waitForMeetingRestart(
+              teamsRuntime, session, heartbeat, sink.sinkName, storageState,
+            );
+          } catch (error) {
+            const code = errorCode(error);
+            if (code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED") {
+              exitMessage = error instanceof Error ? error.message : "The bot was not admitted again.";
+              break;
+            }
+            throw error;
+          }
           teamsRuntime = restarted;
           if (!restarted) {
             exitMessage = "The Teams meeting ended.";
@@ -275,9 +294,18 @@ export function createBotSessionRunner({
           reconnectingSince ??= Date.now();
           if (Date.now() - reconnectingSince >= 15_000) {
             await recorderRuntime.pause(recorder);
-            teamsRuntime = await reconnectTeams(
-              teamsRuntime, session, heartbeat, sink.sinkName, storageState,
-            );
+            try {
+              teamsRuntime = await reconnectTeams(
+                teamsRuntime, session, heartbeat, sink.sinkName, storageState,
+              );
+            } catch (error) {
+              const code = errorCode(error);
+              if (code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED") {
+                exitMessage = error instanceof Error ? error.message : "The bot was removed while reconnecting.";
+                break;
+              }
+              throw error;
+            }
             if (!teamsRuntime) break;
             await recorderRuntime.resume(recorder);
             reconnectingSince = null;
@@ -311,16 +339,26 @@ export function createBotSessionRunner({
           break;
         }
 
-        const audioRecovery = await maybeRecoverSilentAudio({
-          recorder,
-          teamsRuntime,
-          session,
-          heartbeat,
-          sink,
-          storageState,
-          participantCount,
-          lastRecoveryAt: lastAudioRecoveryAt,
-        });
+        let audioRecovery;
+        try {
+          audioRecovery = await maybeRecoverSilentAudio({
+            recorder,
+            teamsRuntime,
+            session,
+            heartbeat,
+            sink,
+            storageState,
+            participantCount,
+            lastRecoveryAt: lastAudioRecoveryAt,
+          });
+        } catch (error) {
+          const code = errorCode(error);
+          if (code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED") {
+            exitMessage = error instanceof Error ? error.message : "The bot was removed during audio recovery.";
+            break;
+          }
+          throw error;
+        }
         teamsRuntime = audioRecovery.teamsRuntime;
         lastAudioRecoveryAt = audioRecovery.lastRecoveryAt;
 
