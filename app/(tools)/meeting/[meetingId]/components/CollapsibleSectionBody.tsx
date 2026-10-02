@@ -13,7 +13,7 @@ const COLLAPSED_MAX_HEIGHT_PX = 168;
  * same `children` render in the dialog, so a section that can be edited stays
  * editable there.
  */
-export function CollapsibleSectionBody({ title, children }: { title: string; children: ReactNode }) {
+export function CollapsibleSectionBody({ title, children, footer }: { title: string; children: ReactNode; footer?: ReactNode }) {
 	const outerRef = useRef<HTMLDivElement>(null);
 	const innerRef = useRef<HTMLDivElement>(null);
 	const [overflowing, setOverflowing] = useState(false);
@@ -41,8 +41,9 @@ export function CollapsibleSectionBody({ title, children }: { title: string; chi
 					Show more ›
 				</button>
 			)}
+			{footer}
 			{open && (
-				<MeetingOverviewListModal title={title} onClose={() => setOpen(false)}>
+				<MeetingOverviewListModal title={title} onClose={() => setOpen(false)} footer={footer}>
 					{children}
 				</MeetingOverviewListModal>
 			)}
