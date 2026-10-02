@@ -11,6 +11,7 @@ const REQUEUEABLE_STATUSES: MeetingBotStatus[] = ["CLAIMED", "JOINING", "LOBBY",
 const DEFAULT_LEASE_TIMEOUT_MS = 120_000;
 const DEFAULT_START_GRACE_MS = 60_000;
 const DEFAULT_SCHEDULE_LATE_GRACE_MS = 10 * 60_000;
+const DEFAULT_CALENDAR_LATE_GRACE_MS = 10 * 60_000;
 // A Meeting left in PROCESSING for longer than this (measured from its
 // updatedAt, which finalize/route.ts always bumps when it flips the status)
 // never got a terminal signal from either the local-STT processing effect
@@ -34,6 +35,9 @@ export async function POST(req: NextRequest) {
   const scheduleLateBefore = new Date(
     now.getTime() - envDuration("MEETING_BOT_SCHEDULE_LATE_GRACE_MS", DEFAULT_SCHEDULE_LATE_GRACE_MS),
   );
+  const calendarLateBefore = new Date(
+    now.getTime() - envDuration("MEETING_BOT_CALENDAR_LATE_GRACE_MS", DEFAULT_CALENDAR_LATE_GRACE_MS),
+  );
 
   await prisma.meetingBotSession.updateMany({
     where: {
@@ -45,6 +49,19 @@ export async function POST(req: NextRequest) {
       status: "FAILED",
       endedAt: now,
       errorMessage: "The scheduled start was missed while no runner capacity was available.",
+    },
+  });
+
+  await prisma.meetingBotSession.updateMany({
+    where: {
+      source: "CALENDAR",
+      status: "REQUESTED",
+      scheduledAt: { not: null, lt: calendarLateBefore },
+    },
+    data: {
+      status: "FAILED",
+      endedAt: now,
+      errorMessage: "The calendar meeting start was missed while the bot was unavailable.",
     },
   });
 
