@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isBotRunnerRequest } from "../_auth";
 import { cleanMeetingTitle, normalizeTeamsMeetingUrl } from "@/lib/meeting/bot/teamsUrl";
+import {
+  botSourceOccurrenceAt,
+  rootBotSourceKey,
+  sameBotOccurrence,
+} from "@/lib/meeting/bot/sessionKeys";
 
 export const runtime = "nodejs";
 
@@ -28,21 +33,6 @@ function parseDate(value: unknown): Date | null {
 
 function sourceKey(mailboxKey: string, eventId: string, scheduledAt: Date): string {
   return `graph:${mailboxKey}:${eventId}:${scheduledAt.toISOString()}`;
-}
-
-function rootSourceKey(value: string | null): string | null {
-  if (!value) return null;
-  const marker = value.indexOf(":continuation:");
-  return marker >= 0 ? value.slice(0, marker) : value;
-}
-
-function rootOccurrenceAt(value: string | null): Date | null {
-  const root = rootSourceKey(value);
-  if (!root) return null;
-  const match = root.match(/:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z)$/);
-  if (!match) return null;
-  const date = new Date(match[1]);
-  return Number.isNaN(date.valueOf()) ? null : date;
 }
 
 type SyncEvent = {
@@ -247,23 +237,34 @@ export async function POST(req: NextRequest) {
             source: "CALENDAR",
             sourceKey: { startsWith: eventPrefix },
           },
-          OR: [
-            {
-              scheduledAt: {
-                gte: new Date(scheduledAt.getTime() - 10 * 60_000),
-                lte: new Date(scheduledAt.getTime() + 10 * 60_000),
-              },
-            },
-            {
-              scheduledAt: null,
-              sourceKey: { contains: ":continuation:" },
-              status: { in: ["REQUESTED","CLAIMED","JOINING","LOBBY","JOINED","CAPTURING","STOP_REQUESTED"] },
-            },
-          ],
+          scheduledAt: {
+            gte: new Date(scheduledAt.getTime() - 10 * 60_000),
+            lte: new Date(scheduledAt.getTime() + 10 * 60_000),
+          },
         },
         orderBy: { requestedAt: "asc" },
       });
-      if (conflict) {
+      let continuationConflict = null;
+      if (!conflict) {
+        const continuations = await tx.meetingBotSession.findMany({
+          where: {
+            meetingUrl,
+            status: { not: "FAILED" },
+            scheduledAt: null,
+            sourceKey: { contains: ":continuation:" },
+            NOT: {
+              source: "CALENDAR",
+              sourceKey: { startsWith: eventPrefix },
+            },
+          },
+          orderBy: { requestedAt: "desc" },
+          take: 50,
+        });
+        continuationConflict = continuations.find((session) =>
+          sameBotOccurrence(session.sourceKey, scheduledAt),
+        ) ?? null;
+      }
+      if (conflict || continuationConflict) {
         stats.ignored += 1;
         return;
       }
@@ -292,11 +293,11 @@ export async function POST(req: NextRequest) {
   });
 
   for (const session of queued) {
-    const rootKey = rootSourceKey(session.sourceKey);
+    const rootKey = rootBotSourceKey(session.sourceKey);
     if (!rootKey) continue;
     if (seen.has(rootKey)) continue;
 
-    const occurrenceAt = session.scheduledAt ?? rootOccurrenceAt(session.sourceKey);
+    const occurrenceAt = session.scheduledAt ?? botSourceOccurrenceAt(session.sourceKey);
     if (!occurrenceAt || occurrenceAt < windowStart || occurrenceAt >= windowEnd) continue;
 
     const belongsToSeenEvent = [...seenEventPrefixes].some((eventPrefix) =>
