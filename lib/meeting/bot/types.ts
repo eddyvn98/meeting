@@ -22,6 +22,7 @@ export interface MeetingBotSchedule {
   meetingUrl: string;
   title: string;
   startAt: string;
+  timezoneOffsetMin: number;
   nextRunAt: string | null;
   repeat: MeetingScheduleRepeat;
   enabled: boolean;
