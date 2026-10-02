@@ -9,6 +9,20 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export function isIntentionalTeamsExit(error) {
+  const code = errorCode(error);
+  return code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED";
+}
+
+export function isStopRejoinError(error) {
+  return [
+    "TEAMS_JOIN_REJECTED",
+    "TEAMS_REMOVED",
+    "TEAMS_ACCESS_DENIED",
+    "TEAMS_INVALID_LINK",
+  ].includes(errorCode(error));
+}
+
 export function createTeamsRecovery({
   launchTeams,
   closeTeams,
@@ -90,5 +104,18 @@ export function createTeamsRecovery({
     return null;
   }
 
-  return { reconnectTeams, waitForMeetingRestart };
+  async function reconnectOrSetExit(args, fallbackMessage) {
+    try {
+      const runtime = await reconnectTeams(...args);
+      return { runtime, exitMessage: null };
+    } catch (error) {
+      if (!isStopRejoinError(error)) throw error;
+      return {
+        runtime: null,
+        exitMessage: error instanceof Error ? error.message : fallbackMessage,
+      };
+    }
+  }
+
+  return { reconnectTeams, reconnectOrSetExit, waitForMeetingRestart };
 }
