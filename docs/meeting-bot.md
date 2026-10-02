@@ -86,7 +86,7 @@ Web application:
 
 ```bash
 pnpm build
-pnpm start
+pnpm exec next start
 ```
 
 Bot runner in a separate process:
