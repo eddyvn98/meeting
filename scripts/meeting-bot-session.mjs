@@ -15,15 +15,12 @@ import {
   readTeamsPage,
   waitForTeamsJoin,
 } from "./meeting-bot-teams.mjs";
-
 const ACTIVE_STATUSES = new Set([
   "REQUESTED", "CLAIMED", "JOINING", "LOBBY", "JOINED", "CAPTURING", "STOP_REQUESTED",
 ]);
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
 export function createBotSessionRunner(config) {
   const {
     api, emit, recorderRuntime, runnerId, teamsDisplayName,
@@ -31,7 +28,6 @@ export function createBotSessionRunner(config) {
     lobbyTimeoutMs, reconnectTimeoutMs, rejoinWindowMs, rejoinAttemptMs,
     aloneTimeoutMs, maxDurationMs, audioInitialWarnMs, audioSilenceWarnMs,
   } = config;
-
   function createHeartbeat(sessionId) {
     let status = "CLAIMED";
     let extra = {};
@@ -47,7 +43,6 @@ export function createBotSessionRunner(config) {
       stop() { clearInterval(timer); },
     };
   }
-
   async function shouldStop(sessionId) {
     try {
       const session = await api(`/api/meeting/bot-sessions/${encodeURIComponent(sessionId)}`);
@@ -56,7 +51,6 @@ export function createBotSessionRunner(config) {
       return false;
     }
   }
-
   async function launchTeams(sinkName, storageState) {
     const browser = await chromium.launch({
       ...(browserChannel ? { channel: browserChannel } : {}),
@@ -83,12 +77,10 @@ export function createBotSessionRunner(config) {
     const page = await context.newPage();
     return { browser, context, page };
   }
-
   async function closeTeams(runtime) {
     await runtime?.context.close().catch(() => undefined);
     await runtime?.browser.close().catch(() => undefined);
   }
-
   async function joinTeams(runtime, session, heartbeat, timeoutMs = lobbyTimeoutMs) {
     await prepareTeamsPage(runtime.page, session, teamsDisplayName);
     return waitForTeamsJoin(runtime.page, {
@@ -98,7 +90,6 @@ export function createBotSessionRunner(config) {
       timeoutMs,
     });
   }
-
   const recovery = createTeamsRecovery({
     launchTeams,
     closeTeams,
@@ -107,19 +98,16 @@ export function createBotSessionRunner(config) {
     rejoinWindowMs,
     rejoinAttemptMs,
   });
-
   async function requestContinuation(session) {
     return api(`/api/meeting/bot-sessions/${encodeURIComponent(session.id)}/continue`, {
       method: "POST",
       body: JSON.stringify({ runnerId }),
     }).catch(() => null);
   }
-
   function intentionalExit(error) {
     const code = errorCode(error);
     return code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED";
   }
-
   async function recoverTeamsOrSetExit(args, errorToMessage) {
     try {
       const runtime = await recovery.reconnectTeams(...args);
@@ -134,35 +122,29 @@ export function createBotSessionRunner(config) {
       throw error;
     }
   }
-
   async function runSession(session, storageState) {
     const heartbeat = createHeartbeat(session.id);
     let sink;
     let teamsRuntime;
     let recorder;
     let exitMessage = null;
-
     try {
       await heartbeat.update("JOINING");
       sink = await createPulseAudioSession(session.id);
       teamsRuntime = await launchTeams(sink.sinkName, storageState);
       if (!await joinTeams(teamsRuntime, session, heartbeat)) return;
-
       recorder = await recorderRuntime.launch(session, sink.sourceName, storageState);
       await heartbeat.update("CAPTURING", { meetingId: recorder.meetingId });
-
       const captureStartedAtMs = Date.now();
       let aloneState = initialAloneState();
       let reconnectingSince = null;
       let lastAudioRecoveryAt = null;
-
       while (true) {
         if (!recorderRuntime.isAlive(recorder)) {
           const error = new Error("Recorder browser crashed while the meeting was active.");
           error.code = "RECORDER_CRASHED";
           throw error;
         }
-
         if (!teamsRuntime?.browser.isConnected() || teamsRuntime.page.isClosed()) {
           await recorderRuntime.pause(recorder);
           const recovered = await recoverTeamsOrSetExit(
@@ -175,7 +157,6 @@ export function createBotSessionRunner(config) {
           await recorderRuntime.resume(recorder);
           continue;
         }
-
         const snapshot = await readTeamsPage(teamsRuntime.page);
         if (snapshot.state === "REMOVED") {
           exitMessage = "The bot was removed from the Teams meeting.";
@@ -185,7 +166,6 @@ export function createBotSessionRunner(config) {
           exitMessage = "The bot was rejected from the Teams meeting.";
           break;
         }
-
         if (snapshot.state === "MEETING_ENDED") {
           await recorderRuntime.pause(recorder);
           try {
@@ -203,7 +183,6 @@ export function createBotSessionRunner(config) {
           reconnectingSince = null;
           continue;
         }
-
         if (snapshot.state === "RECONNECTING") {
           reconnectingSince ??= Date.now();
           if (Date.now() - reconnectingSince >= 15_000) {
@@ -220,18 +199,15 @@ export function createBotSessionRunner(config) {
             continue;
           }
         } else reconnectingSince = null;
-
         if (await shouldStop(session.id)) {
           exitMessage = "The bot was stopped by the Meeting application.";
           break;
         }
-
         const nowMs = Date.now();
         if (isMaxDurationExceeded(captureStartedAtMs, nowMs, maxDurationMs)) {
           exitMessage = "The bot reached the maximum configured meeting duration.";
           break;
         }
-
         const participantCount = parseParticipantCount(snapshot.body);
         const aloneResult = nextAloneState(
           aloneState, isAloneFromCount(participantCount), nowMs, aloneTimeoutMs,
@@ -241,7 +217,6 @@ export function createBotSessionRunner(config) {
           exitMessage = "The bot was alone in the meeting past the configured timeout.";
           break;
         }
-
         try {
           const audioRecovery = await maybeRecoverSilentAudio({
             recorderRuntime,
@@ -264,17 +239,14 @@ export function createBotSessionRunner(config) {
           exitMessage = error instanceof Error ? error.message : "The bot was removed during audio recovery.";
           break;
         }
-
         await heartbeat.update("CAPTURING", { meetingId: recorder.meetingId });
         await sleep(pollMs);
       }
-
       const recordedMs = Date.now() - captureStartedAtMs;
       await heartbeat.update("STOP_REQUESTED", {
         meetingId: recorder.meetingId,
         ...(exitMessage ? { errorMessage: exitMessage } : {}),
       });
-
       await closeTeams(teamsRuntime);
       teamsRuntime = null;
       await recorderRuntime.finish(recorder);
@@ -291,7 +263,6 @@ export function createBotSessionRunner(config) {
       const code = errorCode(error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       const failedMeetingId = recorder?.meetingId || error?.meetingId;
-
       if (intentionalExit(error) && !recorder) {
         await heartbeat.update("ENDED", { errorMessage }).catch(() => undefined);
       } else {
@@ -310,6 +281,5 @@ export function createBotSessionRunner(config) {
       await sink?.dispose().catch(() => undefined);
     }
   }
-
   return { runSession, ACTIVE_STATUSES };
 }
