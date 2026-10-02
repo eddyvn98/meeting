@@ -38,10 +38,9 @@ export async function maybeRecoverSilentAudio({
     `[meeting-bot] session ${session.id} audio is silent; rms=${health.rms.toFixed(6)} peak=${health.peakRms.toFixed(6)}.`,
   );
 
-  const shouldRecover =
-    noInitialSignal ||
-    (typeof participantCount === "number" && participantCount > 1);
-  if (!shouldRecover) return { teamsRuntime, lastRecoveryAt: now };
+  if (typeof participantCount !== "number" || participantCount <= 1) {
+    return { teamsRuntime, lastRecoveryAt: now };
+  }
 
   await recorderRuntime.pause(recorder);
   const recovered = await reconnectTeams(
