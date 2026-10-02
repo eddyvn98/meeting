@@ -16,7 +16,14 @@ const baseUrl = requiredEnv("MEETING_BOT_BASE_URL").replace(/\/$/, "");
 const runnerToken = requiredEnv("MEETING_BOT_RUNNER_TOKEN");
 const runnerId = process.env.MEETING_BOT_RUNNER_ID || `runner-${process.pid}-${randomUUID()}`;
 const pollMs = Number(process.env.MEETING_BOT_POLL_MS || 3000);
-const calendarPollMs = Number(process.env.MEETING_BOT_CALENDAR_POLL_MS || 15000);
+const graphSyncMs = Math.max(
+  15_000,
+  Number(
+    process.env.MEETING_BOT_GRAPH_SYNC_MS ||
+    process.env.MEETING_BOT_CALENDAR_POLL_MS ||
+    60_000,
+  ) || 60_000,
+);
 const schedulePollMs = Number(process.env.MEETING_BOT_SCHEDULE_POLL_MS || 15000);
 const maxConcurrency = Math.max(1, Number(process.env.MEETING_BOT_MAX_CONCURRENCY || 2));
 // How often the runner polls the meeting status while waiting for
@@ -378,14 +385,16 @@ async function main() {
   if (process.platform !== "linux") throw new Error("The unattended meeting bot now requires a Linux server with PulseAudio and parec.");
   const storageState = undefined;
   const calendarSync = hasCalendarConfig() ? createCalendarSync({ api }) : null;
-  if (!calendarSync) console.log("Calendar discovery is disabled until Microsoft Graph credentials are configured.");
+  if (!calendarSync) {
+    console.log("[meeting-bot] Microsoft Graph sync is disabled; internal schedules remain active.");
+  }
   const active = new Map();
   let nextCalendarSync = 0;
   let nextScheduleDispatch = 0;
   while (true) {
     if (calendarSync && Date.now() >= nextCalendarSync) {
       await calendarSync();
-      nextCalendarSync = Date.now() + calendarPollMs;
+      nextCalendarSync = Date.now() + graphSyncMs;
     }
     if (Date.now() >= nextScheduleDispatch) {
       await api("/api/meeting/bot-schedules/dispatch", { method: "POST" }).catch((error) => {

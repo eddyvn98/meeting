@@ -11,7 +11,8 @@
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "meeting:bot": "node scripts/meeting-bot-runner.mjs",
-    "meeting:check-brand": "node scripts/check-no-branding.mjs"
+    "meeting:check-brand": "node scripts/check-no-branding.mjs",
+    "meeting:graph:check": "node scripts/meeting-bot-graph-check.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",

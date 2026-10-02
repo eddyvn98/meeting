@@ -156,18 +156,28 @@ Also verify:
 - Stop bot ends an active occurrence cleanly.
 - A runner restart does not duplicate an already-dispatched occurrence.
 
-## Microsoft Graph is optional
+## Microsoft Graph Outlook sync is optional and complete
 
-The existing Microsoft Graph calendar discovery can remain disabled by leaving these values blank:
+The internal scheduler does not require Microsoft Graph. When Graph credentials are configured, the same runner also synchronizes Outlook calendar meetings into the bot queue.
 
-```env
-MEETING_BOT_GRAPH_TENANT_ID=
-MEETING_BOT_GRAPH_CLIENT_ID=
-MEETING_BOT_GRAPH_CLIENT_SECRET=
-MEETING_BOT_GRAPH_USER_ID=
+The Graph integration:
+
+- uses app-only OAuth client credentials
+- reads the configured mailbox with `Calendars.Read`
+- follows Graph pagination
+- requests UTC times and immutable event IDs
+- uses `onlineMeeting.joinUrl`
+- reconciles cancellations, deletions and reschedules
+- keeps event ownership tied to the configured mailbox rather than the organizer
+- retries token expiry and temporary Graph throttling/service failures
+
+Before enabling it, run:
+
+```bash
+pnpm meeting:graph:check
 ```
 
-Graph can be added later if automatic Outlook calendar synchronization becomes useful. It is not required for the internal scheduler.
+Full setup and administrator guidance: `docs/microsoft-graph-calendar.md`.
 
 ## Teams custom app is a separate future layer
 
