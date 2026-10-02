@@ -29,6 +29,12 @@ export async function POST(
   if (parent.runnerId && parent.runnerId !== runnerId(req)) {
     return NextResponse.json({ error: "Session is owned by another runner." }, { status: 409 });
   }
+  if (parent.status !== "FAILED") {
+    return NextResponse.json(
+      { error: "Only a failed bot session can create a continuation." },
+      { status: 409 },
+    );
+  }
 
   if (continuationDepth(parent.sourceKey) >= maxContinuations()) {
     return NextResponse.json({ error: "Continuation limit reached." }, { status: 409 });
