@@ -79,6 +79,12 @@ export async function waitForTeamsJoin(page, {
     if (snapshot.state === "REMOVED") {
       throw codedError("TEAMS_REMOVED", "The bot was removed from the Teams meeting.");
     }
+    if (snapshot.state === "ACCESS_DENIED") {
+      throw codedError("TEAMS_ACCESS_DENIED", "Teams policy or permissions do not allow this bot to join.");
+    }
+    if (snapshot.state === "INVALID_LINK") {
+      throw codedError("TEAMS_INVALID_LINK", "The Teams meeting link is invalid, expired, or unavailable.");
+    }
     if (snapshot.state === "LOBBY" && reportLobby && !lobbyReported) {
       if (updateStatus) await updateStatus("LOBBY");
       lobbyReported = true;
