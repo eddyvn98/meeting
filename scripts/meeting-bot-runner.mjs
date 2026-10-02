@@ -116,6 +116,10 @@ const sessionRunner = createBotSessionRunner({
   rejoinWindowMs: nonNegativeNumber(process.env.MEETING_BOT_REJOIN_WINDOW_MS, 2 * 60_000),
   rejoinAttemptMs: positiveNumber(process.env.MEETING_BOT_REJOIN_ATTEMPT_MS, 30_000),
   aloneTimeoutMs: positiveNumber(process.env.MEETING_BOT_ALONE_TIMEOUT_MS, 5 * 60_000),
+  initialAloneGraceMs: positiveNumber(
+    process.env.MEETING_BOT_INITIAL_ALONE_GRACE_MS,
+    15 * 60_000,
+  ),
   maxDurationMs: positiveNumber(process.env.MEETING_BOT_MAX_DURATION_MS, 4 * 60 * 60_000),
   audioInitialWarnMs: positiveNumber(
     process.env.MEETING_BOT_AUDIO_INITIAL_SIGNAL_MS,
