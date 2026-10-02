@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
     startAt?: unknown;
     repeat?: unknown;
     enabled?: unknown;
+    timezoneOffsetMin?: unknown;
   };
   try {
     body = await req.json();
@@ -47,6 +48,13 @@ export async function POST(req: NextRequest) {
   const startAt = parseStartAt(body.startAt);
   const repeat = isMeetingScheduleRepeat(body.repeat) ? body.repeat : "NONE";
   const enabled = body.enabled !== false;
+  const timezoneOffsetMin =
+    typeof body.timezoneOffsetMin === "number" &&
+    Number.isInteger(body.timezoneOffsetMin) &&
+    body.timezoneOffsetMin >= -840 &&
+    body.timezoneOffsetMin <= 840
+      ? body.timezoneOffsetMin
+      : 0;
 
   if (!meetingUrl) {
     return NextResponse.json({ error: "A valid Microsoft Teams meeting URL is required." }, { status: 400 });
@@ -61,7 +69,7 @@ export async function POST(req: NextRequest) {
   }
 
   const nextRunAt = enabled
-    ? nextMeetingScheduleAtOrAfter(startAt, repeat, new Date(now.getTime() - 60_000))
+    ? nextMeetingScheduleAtOrAfter(startAt, repeat, new Date(now.getTime() - 60_000), timezoneOffsetMin)
     : null;
 
   const schedule = await prisma.meetingBotSchedule.create({
@@ -70,6 +78,7 @@ export async function POST(req: NextRequest) {
       meetingUrl,
       title: cleanMeetingTitle(body.title),
       startAt,
+      timezoneOffsetMin,
       nextRunAt,
       repeat,
       enabled: enabled && nextRunAt !== null,
