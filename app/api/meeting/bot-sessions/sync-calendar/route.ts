@@ -35,6 +35,10 @@ type SyncEvent = {
   meetingUrl?: unknown;
   title?: unknown;
   scheduledAt?: unknown;
+  ownerEmail?: unknown;
+  organizerEmail?: unknown;
+  organizerAllowed?: unknown;
+  invited?: unknown;
   cancelled?: unknown;
   declined?: unknown;
 };
@@ -46,7 +50,7 @@ export async function POST(req: NextRequest) {
 
   let body: {
     mailboxKey?: unknown;
-    ownerEmail?: unknown;
+    botEmail?: unknown;
     windowStart?: unknown;
     windowEnd?: unknown;
     events?: unknown;
@@ -58,13 +62,13 @@ export async function POST(req: NextRequest) {
   }
 
   const mailboxKey = cleanKey(body.mailboxKey, 240);
-  const ownerEmail = canonicalEmail(body.ownerEmail);
+  const botEmail = canonicalEmail(body.botEmail);
   const windowStart = parseDate(body.windowStart);
   const windowEnd = parseDate(body.windowEnd);
   const events = Array.isArray(body.events) ? body.events as SyncEvent[] : null;
 
-  if (!mailboxKey || !ownerEmail || !windowStart || !windowEnd || !events) {
-    return NextResponse.json({ error: "mailboxKey, ownerEmail, windowStart, windowEnd, and events are required." }, { status: 400 });
+  if (!mailboxKey || !botEmail || !windowStart || !windowEnd || !events) {
+    return NextResponse.json({ error: "mailboxKey, botEmail, windowStart, windowEnd, and events are required." }, { status: 400 });
   }
   if (windowEnd <= windowStart) {
     return NextResponse.json({ error: "Calendar sync window is invalid." }, { status: 400 });
@@ -75,7 +79,15 @@ export async function POST(req: NextRequest) {
 
   const prefix = `graph:${mailboxKey}:`;
   const seen = new Set<string>();
-  const stats = { created: 0, updated: 0, removed: 0, stopRequested: 0, ignored: 0 };
+  const stats = {
+    created: 0,
+    updated: 0,
+    removed: 0,
+    stopRequested: 0,
+    ignored: 0,
+    blockedOrganizer: 0,
+    notInvited: 0,
+  };
 
   // Pre-v2 Graph discovery stored the raw event id as sourceKey. Remove only
   // still-pending legacy rows inside this snapshot window so upgrading cannot
@@ -110,7 +122,19 @@ export async function POST(req: NextRequest) {
     seen.add(key);
 
     const meetingUrl = normalizeTeamsMeetingUrl(item.meetingUrl);
-    const unavailable = item.cancelled === true || item.declined === true || !meetingUrl;
+    const ownerEmail = canonicalEmail(item.ownerEmail);
+    const organizerAllowed = item.organizerAllowed === true;
+    const invited = item.invited === true;
+    const unavailable =
+      item.cancelled === true ||
+      item.declined === true ||
+      !meetingUrl ||
+      !ownerEmail ||
+      !organizerAllowed ||
+      !invited;
+
+    if (!organizerAllowed) stats.blockedOrganizer += 1;
+    if (!invited) stats.notInvited += 1;
 
     const existing = await prisma.meetingBotSession.findUnique({
       where: { source_sourceKey: { source: "CALENDAR", sourceKey: key } },
@@ -132,7 +156,11 @@ export async function POST(req: NextRequest) {
               ? "The Outlook calendar event was cancelled."
               : item.declined === true
                 ? "The calendar invitation was declined."
-                : "The calendar event no longer has a Teams join URL.",
+                : !organizerAllowed
+                ? "The meeting organizer is not allowed to invite the bot."
+                : !invited
+                  ? "The bot mailbox is not an attendee of this meeting."
+                  : "The calendar event no longer has a Teams join URL.",
           },
         });
         stats.stopRequested += 1;
