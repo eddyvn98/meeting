@@ -1,23 +1,26 @@
+"use client";
+
+import { Loader2, Sparkles } from "lucide-react";
 import type { Topic, TranscriptSegment } from "@/lib/meeting/types";
 import { formatClock } from "@/lib/meeting/format";
 import { BilingualText } from "./BilingualText";
 
 /**
- * Right-column Timeline card: dot-and-line vertical list, bold timestamp +
- * label per spec. `lib/meeting/types.ts` has no dedicated "timeline entry"
- * entity — the data-model agent modeled `Topic` as
- * `{ id, title, evidenceSegmentIds, order }` with no timestamp of its own.
- * We derive a rough timestamp per topic by resolving its first evidence
- * segment against `transcriptSegments` and reading that segment's
- * `startTimeMs`. Topics with no resolvable evidence are dropped from the
- * timeline rather than shown with a fabricated time.
+ * Right-column Timeline card: dot-and-line vertical list. Topic timestamps are
+ * derived from each topic's first evidence segment. Owner/editors can rebuild
+ * only the Timeline from the saved transcript without resetting Summary or
+ * any dynamic Overview section.
  */
 export function MeetingTimelineCard({
 	topics,
 	segments,
+	onRegenerate,
+	regenerating,
 }: {
 	topics: Topic[];
 	segments: TranscriptSegment[];
+	onRegenerate?: () => void;
+	regenerating?: boolean;
 }) {
 	const segmentById = new Map(segments.map((s) => [s.id, s]));
 	const entries = topics
@@ -34,9 +37,27 @@ export function MeetingTimelineCard({
 
 	return (
 		<div className="rounded-xl border border-border bg-card p-4">
-			<h3 className="mb-3 text-sm font-semibold text-card-foreground">
-				Timeline
-			</h3>
+			<div className="mb-3 flex items-center gap-2">
+				<h3 className="text-sm font-semibold text-card-foreground">Timeline</h3>
+				<div className="ml-auto">
+					{regenerating ? (
+						<span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground" role="status">
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+							AI generating…
+						</span>
+					) : onRegenerate ? (
+						<button
+							type="button"
+							onClick={onRegenerate}
+							className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+							title="Regenerate timeline with AI"
+						>
+							<Sparkles className="h-3.5 w-3.5" />
+							Regenerate
+						</button>
+					) : null}
+				</div>
+			</div>
 
 			{entries.length === 0 ? (
 				<p className="py-4 text-sm text-muted-foreground">
