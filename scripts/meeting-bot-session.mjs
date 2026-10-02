@@ -75,9 +75,13 @@ export function createBotSessionRunner(config) {
       storageState,
       viewport: { width: 1440, height: 1000 },
     });
-    await context.grantPermissions(["microphone", "camera"], {
-      origin: "https://teams.microsoft.com",
-    });
+    for (const origin of [
+      "https://teams.microsoft.com",
+      "https://teams.live.com",
+      "https://teams.cloud.microsoft",
+    ]) {
+      await context.grantPermissions(["microphone", "camera"], { origin }).catch(() => undefined);
+    }
     const page = await context.newPage();
     return { browser, context, page };
   }
