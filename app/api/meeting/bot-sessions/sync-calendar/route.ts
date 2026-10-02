@@ -77,6 +77,27 @@ export async function POST(req: NextRequest) {
   const seen = new Set<string>();
   const stats = { created: 0, updated: 0, removed: 0, stopRequested: 0, ignored: 0 };
 
+  // Pre-v2 Graph discovery stored the raw event id as sourceKey. Remove only
+  // still-pending legacy rows inside this snapshot window so upgrading cannot
+  // queue both the legacy row and the new immutable mailbox-scoped occurrence.
+  const legacyQueued = await prisma.meetingBotSession.findMany({
+    where: {
+      source: "CALENDAR",
+      status: "REQUESTED",
+      scheduledAt: { gte: windowStart, lt: windowEnd },
+    },
+    select: { id: true, sourceKey: true },
+  });
+  const legacyIds = legacyQueued
+    .filter((session) => !session.sourceKey?.startsWith("graph:"))
+    .map((session) => session.id);
+  if (legacyIds.length) {
+    const deleted = await prisma.meetingBotSession.deleteMany({
+      where: { id: { in: legacyIds }, status: "REQUESTED" },
+    });
+    stats.removed += deleted.count;
+  }
+
   for (const item of events) {
     const eventId = cleanKey(item.eventId);
     const scheduledAt = parseDate(item.scheduledAt);
