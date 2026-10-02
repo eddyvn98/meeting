@@ -24,7 +24,7 @@ export function MinutesTable({ matters, canEdit, onChange, labels = resolveMinut
   return (
     <div className="flex flex-col gap-2">
       <div className="overflow-x-auto rounded-md border border-border">
-        <table className="w-full min-w-[640px] border-collapse text-sm">
+        <table className="minutes-main-table w-full min-w-[640px] border-collapse text-sm">
           <thead>
             <tr className="bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <th className="w-10 border-b border-r border-border px-2 py-2">{labels.serialNumber}</th>
