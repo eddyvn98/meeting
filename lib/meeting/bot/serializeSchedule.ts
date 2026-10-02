@@ -8,6 +8,7 @@ export function serializeMeetingBotSchedule(row: PrismaMeetingBotSchedule): Meet
     meetingUrl: row.meetingUrl,
     title: row.title,
     startAt: row.startAt.toISOString(),
+    timezoneOffsetMin: row.timezoneOffsetMin,
     nextRunAt: row.nextRunAt?.toISOString() ?? null,
     repeat: row.repeat,
     enabled: row.enabled,
