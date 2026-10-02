@@ -82,6 +82,7 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
   const sampleRate = Number(req.headers.get("x-sample-rate"));
   const offsetSec = Number(req.headers.get("x-chunk-offset-sec"));
   const isLast = req.headers.get("x-chunk-last") === "true";
+  const textOnly = req.headers.get("x-text-only") === "true";
   if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
     return NextResponse.json({ error: "x-sample-rate header is required" }, { status: 400 });
   }
@@ -111,8 +112,22 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     releaseSlot = await acquireMeetingSttSlot();
     const audio = decodeInt16Pcm(pcmBuffer);
     const stt = new ServerWhisperProvider(meeting.sttLanguage);
-    const diarization = new ServerDiarizationProviderReal();
 
+    // Overview generation only needs text. The processing client uses this
+    // mode first so it can persist STT and start Dify immediately, then runs
+    // speaker detection through /diarize-chunk in the background.
+    if (textOnly) {
+      const sttResult = await stt.transcribe(audio, sampleRate);
+      return NextResponse.json({
+        segments: sttResult.segments.map((s) => ({
+          start: s.start + offsetSec,
+          end: s.end + offsetSec,
+          text: s.text,
+        })),
+      });
+    }
+
+    const diarization = new ServerDiarizationProviderReal();
     const [sttResult, rawSpans] = await Promise.all([
       stt.transcribe(audio, sampleRate),
       diarization.extractEmbeddingSpans(audio, sampleRate, offsetSec).catch((err) => {
@@ -134,7 +149,7 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     if (err instanceof MeetingSttBusyError) {
       return NextResponse.json({ error: "Server STT is busy; retry shortly." }, { status: 429, headers: { "Retry-After": "5" } });
     }
-    accumulators.delete(key);
+    if (!textOnly) accumulators.delete(key);
     console.warn("[meeting] Chunked transcription failed:", err instanceof Error ? err.message : String(err));
     return NextResponse.json({ error: "Transcription failed" }, { status: 500 });
   } finally {
