@@ -108,6 +108,10 @@ MEETING_BOT_BASE_URL=https://your-meeting-app.example.com
 MEETING_BOT_RUNNER_TOKEN=...
 MEETING_BOT_TEAMS_DISPLAY_NAME=Meeting STT Assistant
 MEETING_BOT_SCHEDULE_POLL_MS=15000
+MEETING_BOT_LOBBY_TIMEOUT_MS=900000
+MEETING_BOT_RECONNECT_TIMEOUT_MS=120000
+MEETING_BOT_REJOIN_WINDOW_MS=120000
+MEETING_BOT_CALENDAR_LATE_GRACE_MS=600000
 ```
 
 `MEETING_BOT_BASE_URL` must be reachable from the Linux runner. The runner and web application must use the same `NEXTAUTH_SECRET`.
@@ -168,7 +172,7 @@ The Graph integration:
 - requests UTC times and immutable event IDs
 - uses `onlineMeeting.joinUrl`
 - reconciles cancellations, deletions and reschedules
-- keeps event ownership tied to the configured mailbox rather than the organizer
+- reads the dedicated bot mailbox while assigning generated Meeting ownership to the allowed organizer
 - retries token expiry and temporary Graph throttling/service failures
 
 Before enabling it, run:
@@ -179,10 +183,14 @@ pnpm meeting:graph:check
 
 Full setup and administrator guidance: `docs/microsoft-graph-calendar.md`.
 
+For unattended failure/recovery behavior and the production E2E matrix, see `docs/meeting-bot-reliability.md`.
+
 ## Teams custom app is a separate future layer
 
 A Teams custom app is also not required for this V1. It can later provide a wider Teams-native experience such as tabs, side panels, bot/chat interactions and notifications while reusing this same Meeting backend.
 
-## Known operational limitation
+## Operational behavior
 
-The current bot joins Teams Web as a browser participant. Tenant meeting policies can place it in the lobby or block anonymous participants. The intended V1 behavior is that a human participant admits the bot when prompted.
+The current bot joins Teams Web as a browser participant. Tenant meeting policies can place it in the lobby or block anonymous participants. A human participant may still need to admit the bot.
+
+The runner now distinguishes intentional removal/rejection from infrastructure interruptions, retries Teams/network/browser failures, watches for real audio signal, protects against late calendar joins and duplicate scheduling sources, and supports a short meeting-restart rejoin window. These safeguards reduce unattended failure, but the deployment still needs the real-tenant E2E checklist in `docs/meeting-bot-reliability.md` before production sign-off.
