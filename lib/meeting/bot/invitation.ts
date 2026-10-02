@@ -69,6 +69,15 @@ function parseClock(hourRaw: string, minuteRaw: string, meridiemRaw?: string): [
 }
 
 function findStartLocal(text: string): string | null {
+  const whenLine = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => /^when\s*:/i.test(line));
+  if (whenLine) {
+    const preferred = findStartLocal(whenLine.replace(/^when\s*:\s*/i, ""));
+    if (preferred) return preferred;
+  }
+
   const time = text.match(/\b(\d{1,2}):(\d{2})\s*(AM|PM)?\b/i);
   if (!time) return null;
   const clock = parseClock(time[1], time[2], time[3]);
