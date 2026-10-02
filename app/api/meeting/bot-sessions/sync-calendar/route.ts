@@ -189,9 +189,14 @@ export async function POST(req: NextRequest) {
         return;
       }
 
+      const eventPrefix = `${prefix}${eventId}:`;
       const conflict = await tx.meetingBotSession.findFirst({
         where: {
           meetingUrl,
+          NOT: {
+            source: "CALENDAR",
+            sourceKey: { startsWith: eventPrefix },
+          },
           scheduledAt: {
             gte: new Date(scheduledAt.getTime() - 10 * 60_000),
             lte: new Date(scheduledAt.getTime() + 10 * 60_000),
