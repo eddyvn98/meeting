@@ -112,18 +112,37 @@ export function createGraphCalendarClient({ env = process.env, fetchImpl = fetch
   }
 
   async function graphGet(url) {
-    const response = await fetchImpl(url, {
-      headers: {
-        Authorization: `Bearer ${await graphToken()}`,
-        Prefer: 'outlook.timezone="UTC", IdType="ImmutableId", odata.maxpagesize=100',
-      },
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const message = data.error?.message || data.error_description || `Microsoft Graph request failed (${response.status}).`;
-      throw new Error(message);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await fetchImpl(url, {
+        headers: {
+          Authorization: `Bearer ${await graphToken()}`,
+          Prefer: 'outlook.timezone="UTC", IdType="ImmutableId", odata.maxpagesize=100',
+        },
+      });
+
+      if (response.status === 401 && attempt === 0) {
+        accessToken = null;
+        expiresAt = 0;
+        continue;
+      }
+
+      if ((response.status === 429 || response.status === 503) && attempt < 2) {
+        const retryAfter = Number(response.headers.get("retry-after"));
+        const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter * 1000, 30_000)
+          : 1000 * (attempt + 1);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = data.error?.message || data.error_description || `Microsoft Graph request failed (${response.status}).`;
+        throw new Error(message);
+      }
+      return data;
     }
-    return data;
+    throw new Error("Microsoft Graph request retry limit exceeded.");
   }
 
   async function fetchSnapshot(nowMs = Date.now()) {
