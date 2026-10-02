@@ -227,7 +227,7 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     });
 
     return tx.meeting.findUniqueOrThrow({ where: { id: meeting.id } });
-  });
+  }, { maxWait: 10_000, timeout: 30_000 });
 
   // The first durable STT text is enough for Summary + Overview sections.
   // Start Dify immediately; speaker detection continues independently.
@@ -286,7 +286,7 @@ function runEnrichmentInBackground(
             data: { title: insights.suggestedTitle },
           });
         }
-      });
+      }, { maxWait: 10_000, timeout: 30_000 });
     } catch (err) {
       console.warn("[meeting] Background insights enrichment failed:", err instanceof Error ? err.message : String(err));
     }
