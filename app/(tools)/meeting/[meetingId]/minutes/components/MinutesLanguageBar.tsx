@@ -69,24 +69,24 @@ export function MinutesLanguageBar({
         <Languages className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
         <div className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5" role="group" aria-label="Minutes language">
           {tab(ORIGINAL_VERSION, "Original")}
-          {translations.map((t) => tab(t.language, t.label, t.stale))}
+          {translations.map((t) => tab(t.language, `${t.label} · AI`, t.stale))}
         </div>
         {translating ? (
           <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Translating…
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> AI translating…
           </span>
         ) : (
           canEdit && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button type="button" className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted">
-                  <Plus className="h-3.5 w-3.5" /> Add language
+                  <Plus className="h-3.5 w-3.5" /> Translate with AI
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
                 {addable.map((l) => (
                   <DropdownMenuItem key={l.code} onSelect={() => onAdd(l.code)}>
-                    {l.label}
+                    Translate to {l.label} with AI
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
@@ -99,7 +99,7 @@ export function MinutesLanguageBar({
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs">
           <p className={`flex items-center gap-1.5 ${current.stale ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}>
             {current.stale && <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
-            {current.stale ? `The original changed after this ${current.label} version was translated.` : `${current.label} version, translated from the original.${canEdit ? " You can edit it." : ""}`}
+            {current.stale ? `The original changed after this AI-generated ${current.label} translation was created.` : `${current.label} · AI — translated from the original.${canEdit ? " You can edit it." : ""}`}
           </p>
           {canEdit && (
             <div className="flex items-center gap-1.5">
@@ -109,7 +109,7 @@ export function MinutesLanguageBar({
                 disabled={translating !== null}
                 className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-medium text-foreground hover:bg-muted disabled:opacity-50"
               >
-                <RefreshCw className="h-3.5 w-3.5" /> Translate again
+                <RefreshCw className="h-3.5 w-3.5" /> Translate again with AI
               </button>
               <button
                 type="button"
@@ -128,11 +128,11 @@ export function MinutesLanguageBar({
       <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{confirm?.kind === "delete" ? `Delete the ${confirm.label} version?` : `Translate the ${confirm?.label} version again?`}</AlertDialogTitle>
+            <AlertDialogTitle>{confirm?.kind === "delete" ? `Delete the ${confirm.label} · AI version?` : `Translate to ${confirm?.label} again with AI?`}</AlertDialogTitle>
             <AlertDialogDescription>
               {confirm?.kind === "delete"
                 ? "This removes only this language version. The original minutes are not affected."
-                : "This replaces the current version with a fresh translation of the original, discarding any edits you made to it."}
+                : "AI will create a fresh translation from the original and replace this version, discarding any edits you made to it."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -144,7 +144,7 @@ export function MinutesLanguageBar({
                 setConfirm(null);
               }}
             >
-              {confirm?.kind === "delete" ? "Delete" : "Translate again"}
+              {confirm?.kind === "delete" ? "Delete" : `Translate to ${confirm?.label ?? ""} with AI`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
