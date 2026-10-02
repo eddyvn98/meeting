@@ -19,21 +19,16 @@ The repository includes an unattended Teams Web runner:
 - `scripts/meeting-bot-runner.mjs`: lifecycle, Teams Web join, recording and automatic leave.
 - `scripts/meeting-bot-audio.mjs`: isolated PulseAudio sink/source per meeting.
 - `scripts/meeting-bot-calendar.mjs`: optional Microsoft Graph calendar discovery.
-- `/meeting/bot`: manual and scheduled-test UI.
+- `/meeting/bot`: internal meeting scheduler (paste Teams link/invitation, one-time or recurring).
 
 The runner must execute on **Linux** with PulseAudio/PipeWire Pulse compatibility and Chromium. It is deliberately separate from the Next.js web process.
 
-### Test before requesting Microsoft admin approval
+### Internal scheduling (no Microsoft admin approval required)
 
-You can verify the entire scheduler/join/record/leave flow without Microsoft Graph:
+The app owns its own meeting schedules. Open `/meeting/bot`, paste either a Teams join URL or a full Outlook/Teams invitation, choose the start time and an optional repeat rule, then save.
 
-1. Run the web app and Linux bot runner.
-2. Open `/meeting/bot`.
-3. Paste a Teams meeting URL.
-4. Use **Scheduled test time**, or one of **In 2/5/10 min**.
-5. Keep `MEETING_BOT_GRAPH_*` empty.
-6. Confirm the session moves through Starting -> Joining -> Waiting/In meeting -> Recording -> Finished.
+Supported repeats: never, daily, weekdays, weekly, every two weeks, and monthly.
 
-This exercises the same database queue and claim logic used by calendar-discovered meetings. Microsoft Graph is only needed to replace the manually scheduled test with real calendar discovery.
+The Linux runner polls due schedules, creates exactly one bot session for each occurrence, joins Teams Web, waits in the lobby for a participant to admit it, records/transcribes, and leaves when the meeting ends. Microsoft Graph is optional and is not required for this flow.
 
 See `docs/meeting-bot.md` for Linux setup, environment variables, Graph setup and the acceptance checklist.

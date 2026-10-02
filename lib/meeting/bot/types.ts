@@ -12,7 +12,24 @@ export const MEETING_BOT_STATUSES = [
 
 export type MeetingBotStatus = (typeof MEETING_BOT_STATUSES)[number];
 
-export type MeetingBotSource = "MANUAL" | "CALENDAR";
+export type MeetingBotSource = "MANUAL" | "CALENDAR" | "SCHEDULE";
+
+export type MeetingScheduleRepeat = "NONE" | "DAILY" | "WEEKDAYS" | "WEEKLY" | "BIWEEKLY" | "MONTHLY";
+
+export interface MeetingBotSchedule {
+  id: string;
+  ownerEmail: string;
+  meetingUrl: string;
+  title: string;
+  startAt: string;
+  timezoneOffsetMin: number;
+  nextRunAt: string | null;
+  repeat: MeetingScheduleRepeat;
+  enabled: boolean;
+  lastTriggeredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface MeetingBotSession {
   id: string;
