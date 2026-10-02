@@ -76,6 +76,7 @@ function sleep(ms) {
 async function api(path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     ...options,
+    signal: options.signal ?? AbortSignal.timeout(30_000),
     headers: {
       "Content-Type": "application/json",
       "x-meeting-bot-token": runnerToken,
@@ -140,11 +141,14 @@ async function main() {
   const active = new Map();
   let nextCalendarSync = 0;
   let nextScheduleDispatch = 0;
+  let calendarSyncInFlight = null;
 
   while (true) {
-    if (calendarSync && Date.now() >= nextCalendarSync) {
-      await calendarSync();
+    if (calendarSync && !calendarSyncInFlight && Date.now() >= nextCalendarSync) {
       nextCalendarSync = Date.now() + graphSyncMs;
+      calendarSyncInFlight = calendarSync().finally(() => {
+        calendarSyncInFlight = null;
+      });
     }
 
     if (Date.now() >= nextScheduleDispatch) {
