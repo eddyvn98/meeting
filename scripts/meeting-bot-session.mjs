@@ -26,7 +26,7 @@ export function createBotSessionRunner(config) {
     api, emit, recorderRuntime, runnerId, teamsDisplayName,
     browserChannel, browserExecutable, headless, pollMs,
     lobbyTimeoutMs, reconnectTimeoutMs, rejoinWindowMs, rejoinAttemptMs,
-    aloneTimeoutMs, maxDurationMs, audioInitialWarnMs, audioSilenceWarnMs,
+    aloneTimeoutMs, initialAloneGraceMs, maxDurationMs, audioInitialWarnMs, audioSilenceWarnMs,
   } = config;
   function createHeartbeat(sessionId) {
     let status = "CLAIMED";
@@ -145,6 +145,7 @@ export function createBotSessionRunner(config) {
       await heartbeat.update("CAPTURING", { meetingId: recorder.meetingId });
       const captureStartedAtMs = Date.now();
       let aloneState = initialAloneState();
+      let seenOtherParticipant = false;
       let reconnectingSince = null;
       let lastAudioRecoveryAt = null;
       while (true) {
@@ -193,6 +194,7 @@ export function createBotSessionRunner(config) {
           }
           await recorderRuntime.resume(recorder);
           aloneState = initialAloneState();
+          seenOtherParticipant = true;
           reconnectingSince = null;
           continue;
         }
@@ -222,8 +224,17 @@ export function createBotSessionRunner(config) {
           break;
         }
         const participantCount = parseParticipantCount(snapshot.body);
+        if (typeof participantCount === "number" && participantCount > 1) {
+          seenOtherParticipant = true;
+        }
+        const initialGraceActive =
+          !seenOtherParticipant &&
+          nowMs - captureStartedAtMs < initialAloneGraceMs;
         const aloneResult = nextAloneState(
-          aloneState, isAloneFromCount(participantCount), nowMs, aloneTimeoutMs,
+          aloneState,
+          !initialGraceActive && isAloneFromCount(participantCount),
+          nowMs,
+          aloneTimeoutMs,
         );
         aloneState = { aloneSinceMs: aloneResult.aloneSinceMs };
         if (aloneResult.shouldEnd) {
