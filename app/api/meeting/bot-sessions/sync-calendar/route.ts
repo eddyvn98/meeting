@@ -154,10 +154,6 @@ export async function POST(req: NextRequest) {
     if (!organizerAllowed) stats.blockedOrganizer += 1;
     if (!invited) stats.notInvited += 1;
 
-    const existing = await prisma.meetingBotSession.findUnique({
-      where: { source_sourceKey: { source: "CALENDAR", sourceKey: key } },
-    });
-
     if (unavailable) {
       const affected = await prisma.meetingBotSession.findMany({
         where: {
