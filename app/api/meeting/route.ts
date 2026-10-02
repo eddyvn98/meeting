@@ -32,16 +32,16 @@ export async function GET(req: NextRequest) {
   const dateParam = req.nextUrl.searchParams.get("date")?.trim();
   const now = new Date();
 
-  const sharedMeetingIds = (
-    await prisma.meetingShare.findMany({
-      where: {
-        invitedEmail: { equals: email, mode: "insensitive" },
-        revokedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
-      select: { meetingId: true },
-    })
-  ).map((s) => s.meetingId);
+  const activeShares = await prisma.meetingShare.findMany({
+    where: {
+      invitedEmail: { equals: email, mode: "insensitive" },
+      revokedAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    select: { meetingId: true, groupId: true },
+  });
+  const sharedMeetingIds = activeShares.map((s) => s.meetingId);
+  const sharedGroupByMeeting = new Map(activeShares.map((s) => [s.meetingId, s.groupId]));
 
   const where: Prisma.MeetingWhereInput = {
     OR: [{ ownerEmail: { equals: email, mode: "insensitive" } }, { id: { in: sharedMeetingIds } }],
@@ -79,14 +79,24 @@ export async function GET(req: NextRequest) {
     }),
   ]);
   const ownedAndShared = new Set(activeShareMeetingIds.map((s) => s.meetingId));
-  const sharedWithMeSet = new Set(sharedMeetingIds);
+  const sharedWithMeSet = new Set(
+    meetings
+      .filter((m) => m.ownerEmail.toLowerCase() !== email.toLowerCase() && sharedGroupByMeeting.has(m.id))
+      .map((m) => m.id),
+  );
 
   return NextResponse.json(
-    meetings.map((m) => ({
-      ...serializeMeeting(m),
-      isShared: ownedAndShared.has(m.id) || sharedWithMeSet.has(m.id),
-      sharedWithMe: sharedWithMeSet.has(m.id),
-    })),
+    meetings.map((m) => {
+      const sharedWithMe = sharedWithMeSet.has(m.id);
+      return {
+        ...serializeMeeting(m),
+        // A shared recipient's folder placement is personal. Never leak the
+        // owner's Meeting.groupId into the recipient's sidebar.
+        groupId: sharedWithMe ? (sharedGroupByMeeting.get(m.id) ?? null) : m.groupId,
+        isShared: ownedAndShared.has(m.id) || sharedWithMe,
+        sharedWithMe,
+      };
+    }),
   );
 }
 
