@@ -64,6 +64,11 @@ function positiveNumber(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function nonNegativeNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -107,7 +112,7 @@ const sessionRunner = createBotSessionRunner({
   pollMs,
   lobbyTimeoutMs: positiveNumber(process.env.MEETING_BOT_LOBBY_TIMEOUT_MS, 15 * 60_000),
   reconnectTimeoutMs: positiveNumber(process.env.MEETING_BOT_RECONNECT_TIMEOUT_MS, 2 * 60_000),
-  rejoinWindowMs: positiveNumber(process.env.MEETING_BOT_REJOIN_WINDOW_MS, 2 * 60_000),
+  rejoinWindowMs: nonNegativeNumber(process.env.MEETING_BOT_REJOIN_WINDOW_MS, 2 * 60_000),
   rejoinAttemptMs: positiveNumber(process.env.MEETING_BOT_REJOIN_ATTEMPT_MS, 30_000),
   aloneTimeoutMs: positiveNumber(process.env.MEETING_BOT_ALONE_TIMEOUT_MS, 5 * 60_000),
   maxDurationMs: positiveNumber(process.env.MEETING_BOT_MAX_DURATION_MS, 4 * 60 * 60_000),
