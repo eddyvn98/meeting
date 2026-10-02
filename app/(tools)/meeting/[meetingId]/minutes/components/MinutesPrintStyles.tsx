@@ -76,37 +76,29 @@ export function MinutesPrintStyles() {
 				}
 
 				/* Match the DOCX proportions so all four MOM columns fit A4. */
-				#minutes-print-root .minutes-main-table th:nth-child(1),
-				#minutes-print-root .minutes-main-table td:nth-child(1) {
+				#minutes-print-root .minutes-main-table th:nth-child(1) {
 					width: 7%;
 				}
-				#minutes-print-root .minutes-main-table th:nth-child(2),
-				#minutes-print-root .minutes-main-table td:nth-child(2) {
+				#minutes-print-root .minutes-main-table th:nth-child(2) {
 					width: 48%;
 				}
-				#minutes-print-root .minutes-main-table th:nth-child(3),
-				#minutes-print-root .minutes-main-table td:nth-child(3) {
+				#minutes-print-root .minutes-main-table th:nth-child(3) {
 					width: 27%;
 				}
-				#minutes-print-root .minutes-main-table th:nth-child(4),
-				#minutes-print-root .minutes-main-table td:nth-child(4) {
+				#minutes-print-root .minutes-main-table th:nth-child(4) {
 					width: 18%;
 				}
 
-				#minutes-print-root .minutes-attendance-table th:nth-child(1),
-				#minutes-print-root .minutes-attendance-table td:nth-child(1) {
+				#minutes-print-root .minutes-attendance-table th:nth-child(1) {
 					width: 34%;
 				}
-				#minutes-print-root .minutes-attendance-table th:nth-child(2),
-				#minutes-print-root .minutes-attendance-table td:nth-child(2) {
+				#minutes-print-root .minutes-attendance-table th:nth-child(2) {
 					width: 24%;
 				}
-				#minutes-print-root .minutes-attendance-table th:nth-child(3),
-				#minutes-print-root .minutes-attendance-table td:nth-child(3) {
+				#minutes-print-root .minutes-attendance-table th:nth-child(3) {
 					width: 24%;
 				}
-				#minutes-print-root .minutes-attendance-table th:nth-child(4),
-				#minutes-print-root .minutes-attendance-table td:nth-child(4) {
+				#minutes-print-root .minutes-attendance-table th:nth-child(4) {
 					width: 18%;
 				}
 
