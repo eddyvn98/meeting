@@ -9,6 +9,7 @@ CREATE TABLE "meeting_bot_schedules" (
   "meetingUrl" TEXT NOT NULL,
   "title" TEXT NOT NULL,
   "startAt" TIMESTAMP(3) NOT NULL,
+  "timezoneOffsetMin" INTEGER NOT NULL DEFAULT 0,
   "nextRunAt" TIMESTAMP(3),
   "repeat" "MeetingScheduleRepeat" NOT NULL DEFAULT 'NONE',
   "enabled" BOOLEAN NOT NULL DEFAULT true,
