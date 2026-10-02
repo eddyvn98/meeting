@@ -31,16 +31,28 @@ export function graphCalendarConfig(env = process.env) {
     throw new Error(`Microsoft Graph config is incomplete: missing ${missing.join(", ")}.`);
   }
 
-  const ownerEmail = email(env.MEETING_BOT_GRAPH_OWNER_EMAIL) || email(fields.userId);
-  if (!ownerEmail) {
+  const botEmail =
+    email(env.MEETING_BOT_GRAPH_BOT_EMAIL) ||
+    email(env.MEETING_BOT_GRAPH_OWNER_EMAIL) ||
+    email(fields.userId);
+  if (!botEmail) {
     throw new Error(
-      "MEETING_BOT_GRAPH_OWNER_EMAIL is required when MEETING_BOT_GRAPH_USER_ID is not an email/UPN.",
+      "MEETING_BOT_GRAPH_BOT_EMAIL is required when MEETING_BOT_GRAPH_USER_ID is not an email/UPN.",
     );
   }
 
+  const defaultDomain = botEmail.split("@")[1];
+  const allowedOrganizerDomains = String(
+    env.MEETING_BOT_GRAPH_ALLOWED_ORGANIZER_DOMAINS || defaultDomain,
+  )
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
   return {
     ...fields,
-    ownerEmail,
+    botEmail,
+    allowedOrganizerDomains,
     mailboxKey: fields.userId.toLowerCase(),
     lookbackMin: positiveNumber(env.MEETING_BOT_GRAPH_LOOKBACK_MIN, DEFAULT_LOOKBACK_MIN),
     lookaheadHours: positiveNumber(env.MEETING_BOT_GRAPH_LOOKAHEAD_HOURS, DEFAULT_LOOKAHEAD_HOURS),
@@ -61,9 +73,16 @@ export function graphDateTimeToIso(value) {
   return Number.isNaN(date.valueOf()) ? null : date.toISOString();
 }
 
-export function graphEventToSyncItem(event) {
+export function graphEventToSyncItem(event, config = null) {
   const scheduledAt = graphDateTimeToIso(event?.start);
   if (!event?.id || !scheduledAt) return null;
+
+  const organizerEmail = email(event.organizer?.emailAddress?.address);
+  const organizerDomain = organizerEmail?.split("@")[1] || null;
+  const organizerAllowed = Boolean(
+    organizerEmail &&
+    config?.allowedOrganizerDomains?.includes(organizerDomain),
+  );
 
   return {
     eventId: String(event.id),
@@ -72,6 +91,9 @@ export function graphEventToSyncItem(event) {
       ? event.subject.trim()
       : "Teams Meeting",
     scheduledAt,
+    organizerEmail,
+    ownerEmail: organizerAllowed ? organizerEmail : null,
+    organizerAllowed,
     cancelled: event.isCancelled === true || event.isAllDay === true,
     declined: event.responseStatus?.response === "declined",
   };
@@ -179,6 +201,8 @@ export function createGraphCalendarClient({ env = process.env, fetchImpl = fetch
         "onlineMeeting",
         "onlineMeetingUrl",
         "responseStatus",
+        "organizer",
+        "attendees",
         "type",
         "lastModifiedDateTime",
       ].join(","),
@@ -198,12 +222,12 @@ export function createGraphCalendarClient({ env = process.env, fetchImpl = fetch
 
     return {
       mailboxKey: config.mailboxKey,
-      ownerEmail: config.ownerEmail,
+      botEmail: config.botEmail,
       userId: config.userId,
       windowStart: windowStart.toISOString(),
       windowEnd: windowEnd.toISOString(),
       pages,
-      events: events.map(graphEventToSyncItem).filter(Boolean),
+      events: events.map((event) => graphEventToSyncItem(event, config)).filter(Boolean),
       rawEventCount: events.length,
     };
   }
@@ -222,7 +246,7 @@ export function createCalendarSync({ env = process.env, api, logger = console, f
         method: "POST",
         body: JSON.stringify({
           mailboxKey: snapshot.mailboxKey,
-          ownerEmail: snapshot.ownerEmail,
+          botEmail: snapshot.botEmail,
           windowStart: snapshot.windowStart,
           windowEnd: snapshot.windowEnd,
           events: snapshot.events,
