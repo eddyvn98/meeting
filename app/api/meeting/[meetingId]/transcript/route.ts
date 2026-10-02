@@ -5,6 +5,8 @@ import { serializeMeeting } from "@/lib/meeting/serialize";
 import { generateMeetingInsights } from "@/lib/meeting/ai/difyMeetingAgent";
 import { buildSummaryCreateInput } from "@/lib/meeting/ai/buildSummaryCreateInput";
 import { correctTranscriptText } from "@/lib/meeting/glossary/applyGlossary";
+import { alignEvidenceSegmentIds } from "@/lib/meeting/ai/evidenceAlignment";
+import { remapSummaryEvidenceAfterTranscriptReplace } from "@/lib/meeting/ai/remapSummaryEvidence";
 
 interface IncomingSegment {
   start: number;
@@ -63,16 +65,12 @@ function speakerKeyFor(segment: IncomingSegment): string {
  * mock-complete/route.ts placeholder if local STT finishes after that
  * fallback already ran.
  *
- * Also asks the meeting agent (difyMeetingAgent.ts generateMeetingInsights)
- * for a structured Overview: prose summary plus Topics/Decisions/
- * ActionItems/Blockers, each optionally citing a transcript line as
- * evidence (buildSummaryCreateInput.ts resolves those citations to real
- * TranscriptSegment ids). Runs in the background AFTER the response is
- * sent (see runEnrichmentInBackground below) — the Overview tab already
- * renders a "Summary not ready yet" empty state (MeetingOverviewTab.tsx)
- * until this lands, so it's safe to not block on. Falls back to a naive
- * text-concat overview with no structured items if the agent is
- * unconfigured, unreachable, or returns unparseable output.
+ * As soon as the first durable STT text is saved, it asks the meeting agent
+ * (difyMeetingAgent.ts generateMeetingInsights) for Summary + dynamic
+ * Overview sections. This intentionally starts BEFORE diarization: those
+ * artifacts need transcript text, not speaker embeddings. A later
+ * diarization-only transcript replacement preserves the generated Overview
+ * and remaps evidence ids to the final merged transcript rows.
  *
  * Vietnamese translation is intentionally NOT generated here — it's an
  * on-demand action now (POST /api/meeting/[meetingId]/translate, triggered
@@ -99,14 +97,21 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  let body: { segments?: IncomingSegment[]; speakerCentroids?: IncomingSpeakerCentroid[]; isPartial?: boolean };
+  let body: {
+    segments?: IncomingSegment[];
+    speakerCentroids?: IncomingSpeakerCentroid[];
+    isPartial?: boolean;
+    /** True only for the second pass that adds speaker labels after the
+     *  text-only transcript was already saved and Overview generation began. */
+    isDiarizationUpdate?: boolean;
+  };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
   const segments = Array.isArray(body.segments) ? body.segments : [];
-  const isPartial = body.isPartial === true;
+  const isDiarizationUpdate = body.isDiarizationUpdate === true;
   if (segments.length === 0) {
     return NextResponse.json({ error: "segments must be a non-empty array" }, { status: 400 });
   }
@@ -141,15 +146,27 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
   const recognized = [...centroidsByKey.entries()].filter(([, c]) => c.recognizedName);
   const lastEnd = Math.max(...segments.map((s) => s.end));
 
-  // Everything below must succeed or fail together — if createMany (or
-  // anything after the delete) threw outside a shared transaction, the
-  // meeting was left with its old transcript deleted and no new one in its
-  // place. An interactive transaction rolls the delete back too on any
-  // failure, so the meeting keeps its previous transcript intact instead of
-  // ending up with none.
-  const { updated, savedSegments } = await prisma.$transaction(async (tx) => {
+  // Transcript replacement and Overview evidence remapping are serialized
+  // with Overview creation. This closes the race where Dify finishes at the
+  // same moment the diarization pass swaps raw STT rows for merged rows.
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-overview:${meeting.id}`}))`;
+
+    const previousSegments = await tx.transcriptSegment.findMany({
+      where: { meetingId: meeting.id },
+      orderBy: { order: "asc" },
+    });
+    const existingSummary = isDiarizationUpdate
+      ? await tx.meetingSummary.findUnique({ where: { meetingId: meeting.id } })
+      : null;
+
     await tx.transcriptSegment.deleteMany({ where: { meetingId: meeting.id } });
-    await tx.meetingSummary.deleteMany({ where: { meetingId: meeting.id } });
+    // A fresh text save invalidates any old Overview. The second,
+    // diarization-only save must preserve the Overview that Dify may already
+    // have generated from exactly the same text.
+    if (!isDiarizationUpdate) {
+      await tx.meetingSummary.deleteMany({ where: { meetingId: meeting.id } });
+    }
 
     await Promise.all(
       speakerKeys.map((speakerKey) => {
@@ -162,10 +179,6 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
       }),
     );
 
-    // A speaker recognized from the company-wide voice library (see
-    // voiceLibrary.ts) is auto-named right away — the same result a manual
-    // rename (PUT .../speakers) would produce, just without the user having
-    // to do it again for a colleague already enrolled from a past meeting.
     if (recognized.length > 0) {
       await Promise.all(
         recognized.map(([speakerKey, c]) =>
@@ -189,13 +202,19 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
         textVi: null,
       })),
     });
-    // createMany doesn't return the created rows — reload them (in the same
-    // `order` we just wrote) so their real ids can back the insights agent's
-    // evidenceIndex citations below.
     const savedSegments = await tx.transcriptSegment.findMany({
       where: { meetingId: meeting.id },
       orderBy: { order: "asc" },
     });
+
+    if (isDiarizationUpdate && existingSummary) {
+      await remapSummaryEvidenceAfterTranscriptReplace(
+        tx,
+        existingSummary.id,
+        previousSegments,
+        savedSegments,
+      );
+    }
 
     await tx.meeting.update({
       where: { id: meeting.id },
@@ -207,11 +226,14 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
       },
     });
 
-    const updated = await tx.meeting.findUniqueOrThrow({ where: { id: meeting.id } });
-    return { updated, savedSegments };
+    return tx.meeting.findUniqueOrThrow({ where: { id: meeting.id } });
   });
 
-  if (!isPartial) runEnrichmentInBackground(meeting.id, meeting.title, email, segments, savedSegments);
+  // The first durable STT text is enough for Summary + Overview sections.
+  // Start Dify immediately; speaker detection continues independently.
+  if (!isDiarizationUpdate) {
+    runEnrichmentInBackground(meeting.id, meeting.title, email, segments);
+  }
 
   return NextResponse.json(serializeMeeting(updated));
 }
@@ -227,10 +249,12 @@ function runEnrichmentInBackground(
   meetingTitle: string,
   callerEmail: string,
   segments: IncomingSegment[],
-  savedSegments: { id: string }[],
 ): void {
   void (async () => {
     try {
+      // Speaker labels are deliberately NOT part of this critical path. On the
+      // first text save every line may still be speaker_1; Summary/Overview
+      // only need the words and timestamps.
       const insights = await generateMeetingInsights({
         meetingTitle,
         transcript: segments.map((s) => ({ speaker: speakerKeyFor(s), text: s.text })),
@@ -238,20 +262,31 @@ function runEnrichmentInBackground(
       });
       const overview = insights?.overview || segments.map((s) => s.text).join(" ").slice(0, 500);
 
-      await prisma.meetingSummary.create({
-        data: buildSummaryCreateInput(meetingId, overview, insights, savedSegments.map((s) => s.id)),
-      });
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-overview:${meetingId}`}))`;
 
-      // Auto-title from content — only when the title is still the
-      // untouched default AND the agent was confident enough to suggest one
-      // (null means the transcript was too short/unclear; the default title
-      // stands in that case, per isDefaultTitle's doc comment).
-      if (insights?.suggestedTitle && isDefaultTitle(meetingTitle)) {
-        await prisma.meeting.update({
-          where: { id: meetingId },
-          data: { title: insights.suggestedTitle },
+        // A retry may already have produced the Overview while this Dify call
+        // was in flight. Never overwrite manual/finished content.
+        const existing = await tx.meetingSummary.findUnique({ where: { meetingId } });
+        if (existing) return;
+
+        const currentSegments = await tx.transcriptSegment.findMany({
+          where: { meetingId },
+          orderBy: { order: "asc" },
         });
-      }
+        const alignedIds = alignEvidenceSegmentIds(segments, currentSegments);
+
+        await tx.meetingSummary.create({
+          data: buildSummaryCreateInput(meetingId, overview, insights, alignedIds),
+        });
+
+        if (insights?.suggestedTitle && isDefaultTitle(meetingTitle)) {
+          await tx.meeting.update({
+            where: { id: meetingId },
+            data: { title: insights.suggestedTitle },
+          });
+        }
+      });
     } catch (err) {
       console.warn("[meeting] Background insights enrichment failed:", err instanceof Error ? err.message : String(err));
     }
