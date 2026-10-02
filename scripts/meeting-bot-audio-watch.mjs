@@ -15,6 +15,12 @@ export async function maybeRecoverSilentAudio({
   const health = await recorderRuntime.audioHealth(recorder);
   if (!health) return { teamsRuntime, lastRecoveryAt };
 
+  if (health.trackReadyState === "ended" || health.trackEnabled === false) {
+    const error = new Error("The recorder audio source ended while the meeting was active.");
+    error.code = "RECORDER_SOURCE_ENDED";
+    throw error;
+  }
+
   const now = Date.now();
   const noInitialSignal =
     health.lastSignalAt === null &&
