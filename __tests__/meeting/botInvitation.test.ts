@@ -45,6 +45,18 @@ describe("meeting schedule recurrence", () => {
     expect(nextMeetingScheduleRun(friday, "WEEKDAYS", friday)?.toISOString()).toBe("2026-10-05T02:00:00.000Z");
   });
 
+  it("keeps weekday recurrence on the local calendar day", () => {
+    const fridaySixAmVietnam = new Date("2026-10-01T23:00:00.000Z");
+    expect(
+      nextMeetingScheduleRun(
+        fridaySixAmVietnam,
+        "WEEKDAYS",
+        fridaySixAmVietnam,
+        -420,
+      )?.toISOString(),
+    ).toBe("2026-10-04T23:00:00.000Z");
+  });
+
   it("advances an old recurring schedule to the next future occurrence", () => {
     const old = new Date("2026-09-07T02:00:00.000Z");
     const from = new Date("2026-10-02T03:00:00.000Z");
