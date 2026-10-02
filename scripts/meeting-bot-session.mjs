@@ -276,7 +276,12 @@ export function createBotSessionRunner(config) {
           ...(failedMeetingId ? { meetingId: failedMeetingId } : {}),
           errorMessage,
         }).catch(() => undefined);
-        if (["RECORDER_CRASHED", "TEAMS_RECOVERY_FAILED", "TEAMS_PAGE_CLOSED"].includes(code)) {
+        if ([
+          "RECORDER_CRASHED",
+          "RECORDER_SOURCE_ENDED",
+          "TEAMS_RECOVERY_FAILED",
+          "TEAMS_PAGE_CLOSED",
+        ].includes(code)) {
           await requestContinuation(session);
         }
       }
