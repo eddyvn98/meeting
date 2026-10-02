@@ -79,18 +79,21 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
       data: { overview },
     });
   } else {
+    // A failed/empty AI extraction must not erase a timeline that was already
+    // there. Only replace the current topics after we have a non-empty result.
+    if (insights.topics.length === 0) {
+      return NextResponse.json({ error: "The AI did not find enough grounded topics to rebuild the timeline." }, { status: 422 });
+    }
     await prisma.$transaction(async (tx) => {
       await tx.topic.deleteMany({ where: { summaryId: auth.summary.id } });
-      if (insights.topics.length > 0) {
-        await tx.topic.createMany({
-          data: insights.topics.map((topic, order) => ({
-            summaryId: auth.summary.id,
-            title: topic.title,
-            evidenceSegmentIds: evidenceIds(topic.evidenceIndex, segmentIds),
-            order,
-          })),
-        });
-      }
+      await tx.topic.createMany({
+        data: insights.topics.map((topic, order) => ({
+          summaryId: auth.summary.id,
+          title: topic.title,
+          evidenceSegmentIds: evidenceIds(topic.evidenceIndex, segmentIds),
+          order,
+        })),
+      });
     });
   }
 
