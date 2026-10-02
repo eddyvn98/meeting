@@ -72,10 +72,19 @@ export async function POST(req: NextRequest) {
             source: "SCHEDULE",
             sourceKey: { startsWith: `${schedule.id}:` },
           },
-          scheduledAt: {
-            gte: new Date(occurrence.getTime() - 10 * 60_000),
-            lte: new Date(occurrence.getTime() + 10 * 60_000),
-          },
+          OR: [
+            {
+              scheduledAt: {
+                gte: new Date(occurrence.getTime() - 10 * 60_000),
+                lte: new Date(occurrence.getTime() + 10 * 60_000),
+              },
+            },
+            {
+              scheduledAt: null,
+              sourceKey: { contains: ":continuation:" },
+              status: { in: ["REQUESTED","CLAIMED","JOINING","LOBBY","JOINED","CAPTURING","STOP_REQUESTED"] },
+            },
+          ],
         },
         orderBy: { requestedAt: "asc" },
       });
