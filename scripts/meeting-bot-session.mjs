@@ -166,19 +166,7 @@ export function createBotSessionRunner(config) {
           exitMessage = "The bot was rejected from the Teams meeting.";
           break;
         }
-        if (snapshot.state === "LEFT") {
-          await recorderRuntime.pause(recorder);
-          const recovered = await recoverTeamsOrSetExit(
-            [teamsRuntime, session, heartbeat, sink.sinkName, storageState],
-            "The bot left Teams and could not rejoin.",
-          );
-          teamsRuntime = recovered.runtime;
-          if (recovered.exitMessage) { exitMessage = recovered.exitMessage; break; }
-          if (!teamsRuntime) break;
-          await recorderRuntime.resume(recorder);
-          continue;
-        }
-        if (snapshot.state === "MEETING_ENDED") {
+        if (snapshot.state === "LEFT" || snapshot.state === "MEETING_ENDED") {
           await recorderRuntime.pause(recorder);
           try {
             teamsRuntime = await recovery.waitForMeetingRestart(
@@ -189,7 +177,12 @@ export function createBotSessionRunner(config) {
             exitMessage = error instanceof Error ? error.message : "The bot was not admitted again.";
             break;
           }
-          if (!teamsRuntime) { exitMessage = "The Teams meeting ended."; break; }
+          if (!teamsRuntime) {
+            exitMessage = snapshot.state === "LEFT"
+              ? "Teams reported that the bot left the meeting."
+              : "The Teams meeting ended.";
+            break;
+          }
           await recorderRuntime.resume(recorder);
           aloneState = initialAloneState();
           reconnectingSince = null;
