@@ -107,7 +107,7 @@ export function MeetingFullScriptView({
 				<>
 					<div className="my-3 border-t border-border" />
 					<p className="select-text whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-						{secondary || "Translation not available yet."}
+						{secondary ? <><span className="mr-1 text-[11px] font-medium uppercase tracking-wide opacity-70">AI</span>{secondary}</> : "AI translation not available yet."}
 					</p>
 				</>
 			)}
