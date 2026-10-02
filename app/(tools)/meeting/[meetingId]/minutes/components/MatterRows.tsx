@@ -44,18 +44,21 @@ function MatterRow({ row, canEdit, ongoingLabel, onChange, onRemove }: { row: Mi
       </td>
       <td className="px-2 py-2">
         {canEdit ? (
-          <AutoTextarea
-            className={cellTextClass}
-            defaultValue={formatResponsibleList(row.responsible)}
-            onBlur={(e) => onChange({ ...row, responsible: parseResponsibleInput(e.target.value) })}
-            onKeyDown={(e) => {
-              if (isPlainEnter(e)) {
-                e.preventDefault();
-                e.currentTarget.blur();
-              }
-            }}
-            placeholder="Names, comma-separated"
-          />
+          <>
+            <AutoTextarea
+              className={`${cellTextClass} print:hidden`}
+              defaultValue={formatResponsibleList(row.responsible)}
+              onBlur={(e) => onChange({ ...row, responsible: parseResponsibleInput(e.target.value) })}
+              onKeyDown={(e) => {
+                if (isPlainEnter(e)) {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                }
+              }}
+              placeholder="Names, comma-separated"
+            />
+            <span className="hidden whitespace-pre-wrap break-words text-sm print:inline">{formatResponsibleList(row.responsible) || "—"}</span>
+          </>
         ) : (
           <span className="whitespace-pre-wrap break-words text-sm">{formatResponsibleList(row.responsible) || "—"}</span>
         )}
@@ -98,7 +101,7 @@ export function MatterRows({
           <div className="flex items-start gap-2">
             <span className="pt-0.5 font-bold">{formatMatterNumber(matterIndex)}.</span>
             <AutoTextarea
-              className={`${cellTextClass} flex-1 font-bold`}
+              className={`${cellTextClass} flex-1 font-bold print:hidden`}
               value={matter.title}
               readOnly={!canEdit}
               onChange={(e) => onChange({ ...matter, title: e.target.value })}
@@ -113,6 +116,7 @@ export function MatterRows({
               }}
               placeholder="Matter title"
             />
+            <span className="hidden min-w-0 flex-1 whitespace-pre-wrap break-words font-bold print:block">{matter.title || "—"}</span>
             <RowCommentButton anchorId={matter.id} className="shrink-0" />
             {canEdit && (
               <div className="flex shrink-0 items-center gap-0.5 transition-opacity md:opacity-0 md:focus-within:opacity-100 md:group-hover/matter:opacity-100 print:hidden">
