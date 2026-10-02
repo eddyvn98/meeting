@@ -19,7 +19,8 @@ const MAX_MEETING_IDS = 50;
  * POST /api/meeting/[meetingId]/ask, except the caller ticks WHICH of the
  * group's meetings to include via `meetingIds` (never "every meeting ever
  * filed here" implicitly) and evidence citations carry which meeting they
- * came from. Owner-only — groups (and their Ask history) are never shared.
+ * came from. Groups remain personal/owner-only, but a group may contain
+ * meetings shared with that owner when the recipient filed them there.
  */
 export async function POST(req: NextRequest, { params }: { params: { groupId: string } }) {
   const email = await resolveMeetingCallerEmail(req);
@@ -56,8 +57,27 @@ export async function POST(req: NextRequest, { params }: { params: { groupId: st
         .slice(-6)
     : [];
 
+  const now = new Date();
+  const sharedPlacements = await prisma.meetingShare.findMany({
+    where: {
+      meetingId: { in: meetingIds },
+      groupId: group.id,
+      invitedEmail: { equals: email, mode: "insensitive" },
+      revokedAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    select: { meetingId: true },
+  });
+  const sharedMeetingIds = sharedPlacements.map((s) => s.meetingId);
+
   const meetings = await prisma.meeting.findMany({
-    where: { id: { in: meetingIds }, groupId: group.id, ownerEmail: { equals: email, mode: "insensitive" } },
+    where: {
+      id: { in: meetingIds },
+      OR: [
+        { groupId: group.id, ownerEmail: { equals: email, mode: "insensitive" } },
+        { id: { in: sharedMeetingIds } },
+      ],
+    },
   });
   if (meetings.length === 0) {
     return NextResponse.json({ error: "None of the selected meetings belong to this group" }, { status: 400 });
