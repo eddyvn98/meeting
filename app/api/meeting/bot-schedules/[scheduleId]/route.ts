@@ -56,7 +56,11 @@ export async function PATCH(
   if (body.repeat !== undefined && !isMeetingScheduleRepeat(body.repeat)) {
     return NextResponse.json({ error: "Invalid repeat rule." }, { status: 400 });
   }
-  const nextRepeat = body.repeat === undefined ? schedule.repeat : body.repeat;
+  const nextRepeat = body.repeat === undefined
+    ? schedule.repeat
+    : isMeetingScheduleRepeat(body.repeat)
+      ? body.repeat
+      : schedule.repeat;
   const nextEnabled = body.enabled === undefined ? schedule.enabled : body.enabled === true;
 
   const now = new Date();
