@@ -30,6 +30,12 @@ const NOISE = [
   /need help/i,
   /dial[- ]in/i,
   /conference id/i,
+  /^from\s*:/i,
+  /^sent\s*:/i,
+  /^to\s*:/i,
+  /^cc\s*:/i,
+  /^when\s*:/i,
+  /^where\s*:/i,
   /organizer/i,
   /________________________________________________________________/i,
 ];
@@ -115,6 +121,12 @@ function looksLikeDateOrTime(line: string): boolean {
 
 function findTitle(text: string, meetingUrl: string | null): string | null {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const subject = lines.find((line) => /^subject\s*:/i.test(line));
+  if (subject) {
+    const value = subject.replace(/^subject\s*:\s*/i, "").trim().replace(/\s+/g, " ");
+    if (value) return value.slice(0, 180);
+  }
+
   for (const line of lines) {
     if (meetingUrl && line.includes(meetingUrl)) continue;
     if (/https:\/\//i.test(line)) continue;
