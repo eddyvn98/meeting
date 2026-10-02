@@ -218,6 +218,7 @@ export async function POST(req: NextRequest) {
       const conflict = await tx.meetingBotSession.findFirst({
         where: {
           meetingUrl,
+          status: { not: "FAILED" },
           NOT: {
             source: "CALENDAR",
             sourceKey: { startsWith: eventPrefix },
