@@ -14,6 +14,7 @@ import {
   isStopRejoinError,
 } from "./meeting-bot-recovery.mjs";
 import {
+  clickIfVisible,
   errorCode,
   prepareTeamsPage,
   readTeamsPage,
@@ -123,6 +124,10 @@ export function createBotSessionRunner(config) {
       sink = await createPulseAudioSession(session.id);
       teamsRuntime = await launchTeams(sink.sinkName, storageState);
       if (!await joinTeams(teamsRuntime, session, heartbeat)) return;
+      await clickIfVisible(
+        teamsRuntime.page,
+        [/^People$/i, /^Participants$/i, /Người tham gia/i],
+      ).catch(() => false);
       recorder = await recorderRuntime.launch(session, sink.sourceName, storageState);
       await heartbeat.update("CAPTURING", { meetingId: recorder.meetingId });
       const captureStartedAtMs = Date.now();
