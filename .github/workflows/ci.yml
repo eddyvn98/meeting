@@ -21,6 +21,11 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Check meeting bot scripts
+        run: |
+          for file in scripts/meeting-bot-*.mjs; do
+            node --check "$file"
+          done
       - run: pnpm run prisma:generate
       - run: pnpm run meeting:check-brand
       - run: pnpm run prisma:validate
