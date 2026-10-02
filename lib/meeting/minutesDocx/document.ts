@@ -195,6 +195,7 @@ function buildMinutesTable(matters: MinutesMatter[], labels: MinutesLabels): str
   return `<w:tbl>
     <w:tblPr>
       <w:tblW w:w="${CONTENT_WIDTH_DXA}" w:type="dxa"/>
+      <w:tblLayout w:type="fixed"/>
       <w:tblBorders>
         <w:top w:val="single" w:sz="4" w:color="666666"/>
         <w:left w:val="single" w:sz="4" w:color="666666"/>
