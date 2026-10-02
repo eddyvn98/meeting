@@ -51,8 +51,15 @@ export function createBotSessionRunner(config) {
   async function shouldStop(sessionId) {
     try {
       const session = await api(`/api/meeting/bot-sessions/${encodeURIComponent(sessionId)}`);
-      return session?.status === "STOP_REQUESTED";
-    } catch {
+      if (!session) return false;
+      if (session.runnerId !== runnerId || ["REQUESTED", "ENDED", "FAILED"].includes(session.status)) {
+        const error = new Error("The bot session lease is no longer owned by this runner.");
+        error.code = "SESSION_LEASE_LOST";
+        throw error;
+      }
+      return session.status === "STOP_REQUESTED";
+    } catch (error) {
+      if (errorCode(error) === "SESSION_LEASE_LOST") throw error;
       return false;
     }
   }
