@@ -108,12 +108,20 @@ export function createBotSessionRunner(config) {
     const code = errorCode(error);
     return code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED";
   }
+  function stopRejoinError(error) {
+    return [
+      "TEAMS_JOIN_REJECTED",
+      "TEAMS_REMOVED",
+      "TEAMS_ACCESS_DENIED",
+      "TEAMS_INVALID_LINK",
+    ].includes(errorCode(error));
+  }
   async function recoverTeamsOrSetExit(args, errorToMessage) {
     try {
       const runtime = await recovery.reconnectTeams(...args);
       return { runtime, exitMessage: null };
     } catch (error) {
-      if (intentionalExit(error)) {
+      if (stopRejoinError(error)) {
         return {
           runtime: null,
           exitMessage: error instanceof Error ? error.message : errorToMessage,
@@ -173,7 +181,7 @@ export function createBotSessionRunner(config) {
               teamsRuntime, session, heartbeat, sink.sinkName, storageState,
             );
           } catch (error) {
-            if (!intentionalExit(error)) throw error;
+            if (!stopRejoinError(error)) throw error;
             exitMessage = error instanceof Error ? error.message : "The bot was not admitted again.";
             break;
           }
@@ -244,7 +252,7 @@ export function createBotSessionRunner(config) {
             break;
           }
         } catch (error) {
-          if (!intentionalExit(error)) throw error;
+          if (!stopRejoinError(error)) throw error;
           exitMessage = error instanceof Error ? error.message : "The bot was removed during audio recovery.";
           break;
         }
