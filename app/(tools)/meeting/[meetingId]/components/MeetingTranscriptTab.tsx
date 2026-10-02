@@ -97,8 +97,8 @@ export function MeetingTranscriptTab({
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end">
 							<DropdownMenuItem onSelect={() => copyAll("en")}>Original</DropdownMenuItem>
-							<DropdownMenuItem onSelect={() => copyAll("vi")}>Translated</DropdownMenuItem>
-							<DropdownMenuItem onSelect={() => copyAll("bilingual")}>Bilingual (original + translation)</DropdownMenuItem>
+							<DropdownMenuItem onSelect={() => copyAll("vi")}>AI translated</DropdownMenuItem>
+							<DropdownMenuItem onSelect={() => copyAll("bilingual")}>Bilingual (original + AI translation)</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
 					<button
