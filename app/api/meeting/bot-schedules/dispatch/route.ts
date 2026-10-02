@@ -62,8 +62,21 @@ export async function POST(req: NextRequest) {
       }
 
       const sourceKey = `${schedule.id}:${occurrence.toISOString()}`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-bot:${schedule.meetingUrl}`}))`;
 
-      await tx.meetingBotSession.upsert({
+      const conflict = await tx.meetingBotSession.findFirst({
+        where: {
+          meetingUrl: schedule.meetingUrl,
+          status: { in: ["REQUESTED", "CLAIMED", "JOINING", "LOBBY", "JOINED", "CAPTURING", "STOP_REQUESTED"] },
+          scheduledAt: {
+            gte: new Date(occurrence.getTime() - 10 * 60_000),
+            lte: new Date(occurrence.getTime() + 10 * 60_000),
+          },
+        },
+        orderBy: { requestedAt: "asc" },
+      });
+
+      if (!conflict) await tx.meetingBotSession.upsert({
         where: {
           source_sourceKey: {
             source: "SCHEDULE",
