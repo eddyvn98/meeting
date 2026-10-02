@@ -11,6 +11,38 @@
 
 const MINUTE_MS = 60_000;
 
+export const TEAMS_PAGE_STATES = [
+  "LOBBY",
+  "REJECTED",
+  "REMOVED",
+  "MEETING_ENDED",
+  "RECONNECTING",
+];
+
+/**
+ * Best-effort classification of Teams Web status text. Keep this pure so
+ * wording changes can be covered by tests without launching Chromium.
+ */
+export function detectTeamsPageState(text) {
+  if (typeof text !== "string" || !text.trim()) return null;
+  if (
+    /you (?:weren't|were not) admitted|request (?:was )?declined|admission (?:was )?denied|someone declined your request|không được chấp nhận|từ chối.*tham gia/i.test(text)
+  ) return "REJECTED";
+  if (
+    /you were removed|removed from the meeting|you've been removed|organizer removed you|bạn đã bị (?:xóa|loại).*cuộc họp|đã loại bạn khỏi cuộc họp/i.test(text)
+  ) return "REMOVED";
+  if (
+    /meeting has ended|the meeting ended|call ended|organizer ended the meeting|cuộc họp đã kết thúc|cuộc gọi đã kết thúc/i.test(text)
+  ) return "MEETING_ENDED";
+  if (
+    /reconnecting|trying to reconnect|connection (?:was )?lost|network problem|poor network|đang kết nối lại|mất kết nối|sự cố mạng/i.test(text)
+  ) return "RECONNECTING";
+  if (
+    /waiting in the lobby|let you in|waiting for someone|sẽ có người cho bạn vào|đang chờ.*sảnh|đang ở sảnh chờ/i.test(text)
+  ) return "LOBBY";
+  return null;
+}
+
 /**
  * How long the runner should keep the STT/recorder browser open, polling
  * for the meeting to reach READY/FAILED, before giving up and forcing a
@@ -72,6 +104,10 @@ export function parseParticipantCount(text) {
     /participants\s*\((\d+)\)/i,
     /(\d+)\s+people\b/i,
     /(\d+)\s+participants\b/i,
+    /người\s*\((\d+)\)/i,
+    /người tham gia\s*\((\d+)\)/i,
+    /(\d+)\s+người\b/i,
+    /(\d+)\s+người tham gia\b/i,
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
