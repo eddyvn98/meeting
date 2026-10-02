@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseTeamsInvitation } from "@/lib/meeting/bot/invitation";
-import { nextMeetingScheduleRun } from "@/lib/meeting/bot/recurrence";
+import { nextMeetingScheduleAtOrAfter, nextMeetingScheduleRun } from "@/lib/meeting/bot/recurrence";
 
 describe("Teams invitation parsing", () => {
   it("extracts a Teams link, title and English date/time", () => {
@@ -43,6 +43,13 @@ describe("meeting schedule recurrence", () => {
   it("skips weekends for weekday schedules", () => {
     const friday = new Date("2026-10-02T02:00:00.000Z");
     expect(nextMeetingScheduleRun(friday, "WEEKDAYS", friday)?.toISOString()).toBe("2026-10-05T02:00:00.000Z");
+  });
+
+  it("advances an old recurring schedule to the next future occurrence", () => {
+    const old = new Date("2026-09-07T02:00:00.000Z");
+    const from = new Date("2026-10-02T03:00:00.000Z");
+    expect(nextMeetingScheduleAtOrAfter(old, "WEEKLY", from)?.toISOString()).toBe("2026-10-05T02:00:00.000Z");
+    expect(nextMeetingScheduleAtOrAfter(old, "NONE", from)).toBeNull();
   });
 
   it("keeps the original day anchor for monthly schedules", () => {
