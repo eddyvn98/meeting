@@ -1,5 +1,6 @@
 import { chromium } from "@playwright/test";
 import { createPulseAudioSession } from "./meeting-bot-audio.mjs";
+import { createSessionControl } from "./meeting-bot-control.mjs";
 import { maybeRecoverSilentAudio } from "./meeting-bot-audio-watch.mjs";
 import {
   initialAloneState,
@@ -33,36 +34,7 @@ export function createBotSessionRunner(config) {
     lobbyTimeoutMs, reconnectTimeoutMs, rejoinWindowMs, rejoinAttemptMs,
     aloneTimeoutMs, initialAloneGraceMs, maxDurationMs, audioInitialWarnMs, audioSilenceWarnMs,
   } = config;
-  function createHeartbeat(sessionId) {
-    let status = "CLAIMED";
-    let extra = {};
-    const timer = setInterval(() => {
-      void emit(sessionId, status, extra).catch(() => undefined);
-    }, 15_000);
-    return {
-      update(nextStatus, nextExtra = {}) {
-        status = nextStatus;
-        extra = nextExtra;
-        return emit(sessionId, status, extra);
-      },
-      stop() { clearInterval(timer); },
-    };
-  }
-  async function shouldStop(sessionId) {
-    try {
-      const session = await api(`/api/meeting/bot-sessions/${encodeURIComponent(sessionId)}`);
-      if (!session) return false;
-      if (session.runnerId !== runnerId || ["REQUESTED", "ENDED", "FAILED"].includes(session.status)) {
-        const error = new Error("The bot session lease is no longer owned by this runner.");
-        error.code = "SESSION_LEASE_LOST";
-        throw error;
-      }
-      return session.status === "STOP_REQUESTED";
-    } catch (error) {
-      if (errorCode(error) === "SESSION_LEASE_LOST") throw error;
-      return false;
-    }
-  }
+  const control = createSessionControl({ api, emit, runnerId });
   async function launchTeams(sinkName, storageState) {
     const browser = await chromium.launch({
       ...(browserChannel ? { channel: browserChannel } : {}),
@@ -102,7 +74,7 @@ export function createBotSessionRunner(config) {
     return waitForTeamsJoin(runtime.page, {
       sessionId: session.id,
       updateStatus: heartbeat.update,
-      shouldStop,
+      shouldStop: control.shouldStop,
       timeoutMs,
     });
   }
@@ -121,7 +93,7 @@ export function createBotSessionRunner(config) {
     }).catch(() => null);
   }
   async function runSession(session, storageState) {
-    const heartbeat = createHeartbeat(session.id);
+    const heartbeat = control.createHeartbeat(session.id);
     let sink;
     let teamsRuntime;
     let recorder;
