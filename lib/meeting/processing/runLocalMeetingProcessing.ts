@@ -215,10 +215,12 @@ async function saveTranscript(
   segments: SpeakerTaggedSegment[],
   centroids: SpeakerCentroid[],
   isPartial = false,
+  isDiarizationUpdate = false,
 ): Promise<boolean> {
   const body = JSON.stringify({
     segments,
     isPartial,
+    isDiarizationUpdate,
     // Persisted onto Speaker.embeddingJson (transcript/route.ts) so a later
     // rename can enroll this voice into the company-wide library — see
     // voiceLibrary.ts. Also carries `recognizedName` when this speaker
@@ -258,7 +260,7 @@ async function enrichTranscriptWithDiarization(
     );
     const tagged: SpeakerTaggedSegment[] = sttSegments.map((s, i) => ({ ...s, speakerIndex: speakerIndexes[i] }));
     const utterances = mergeUtterances(tagged);
-    if (utterances.length > 0) await saveTranscript(meetingId, utterances, centroids);
+    if (utterances.length > 0) await saveTranscript(meetingId, utterances, centroids, false, true);
   } catch (err) {
     console.warn("[meeting] Background diarization failed; keeping the initial transcript:", err instanceof Error ? err.message : String(err));
   }
