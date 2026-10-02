@@ -16,6 +16,19 @@ https://teams.microsoft.com/l/meetup-join/abc?context=test
     expect(parsed.meetingUrl).toContain("teams.microsoft.com");
   });
 
+  it("prefers an Outlook Subject line over mail headers", () => {
+    const parsed = parseTeamsInvitation(`
+From: person@example.com
+Sent: Friday, October 2, 2026
+To: team@example.com
+Subject: Weekly Coordination
+When: Monday, October 5, 2026 9:00 AM - 10:00 AM
+https://teams.microsoft.com/l/meetup-join/abc
+`);
+    expect(parsed.title).toBe("Weekly Coordination");
+    expect(parsed.startLocal).toBe("2026-10-05T09:00");
+  });
+
   it("supports day/month numeric invitations", () => {
     const parsed = parseTeamsInvitation(`
 Client Review
