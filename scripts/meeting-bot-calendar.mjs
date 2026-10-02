@@ -93,22 +93,37 @@ export function createGraphCalendarClient({ env = process.env, fetchImpl = fetch
       scope: GRAPH_SCOPE,
       grant_type: "client_credentials",
     });
-    const response = await fetchImpl(
-      `https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}/oauth2/v2.0/token`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body,
-      },
-    );
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || typeof data.access_token !== "string") {
-      throw new Error(data.error_description || data.error || "Microsoft Graph authentication failed.");
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await fetchImpl(
+        `https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}/oauth2/v2.0/token`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body,
+        },
+      );
+
+      if ((response.status === 429 || response.status === 503) && attempt < 2) {
+        const retryAfter = Number(response.headers.get("retry-after"));
+        const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter * 1000, 30_000)
+          : 1000 * (attempt + 1);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || typeof data.access_token !== "string") {
+        throw new Error(data.error_description || data.error || "Microsoft Graph authentication failed.");
+      }
+
+      accessToken = data.access_token;
+      expiresAt = Date.now() + positiveNumber(data.expires_in, 3600) * 1000;
+      return accessToken;
     }
 
-    accessToken = data.access_token;
-    expiresAt = Date.now() + positiveNumber(data.expires_in, 3600) * 1000;
-    return accessToken;
+    throw new Error("Microsoft Graph token retry limit exceeded.");
   }
 
   async function graphGet(url) {
