@@ -63,3 +63,20 @@ export function nextMeetingScheduleRun(
       return nextMonthly(startAt, currentOccurrence);
   }
 }
+
+export function nextMeetingScheduleAtOrAfter(
+  startAt: Date,
+  repeat: MeetingScheduleRepeat,
+  from: Date,
+): Date | null {
+  if (startAt.getTime() >= from.getTime()) return new Date(startAt);
+  if (repeat === "NONE") return null;
+
+  let current = new Date(startAt);
+  for (let i = 0; i < 5000 && current.getTime() < from.getTime(); i += 1) {
+    const next = nextMeetingScheduleRun(startAt, repeat, current);
+    if (!next) return null;
+    current = next;
+  }
+  return current.getTime() >= from.getTime() ? current : null;
+}
