@@ -6,6 +6,7 @@ export interface BotAudioHealthSnapshot {
   lastSignalAt: number | null;
   rms: number;
   peakRms: number;
+  contextState: AudioContextState;
 }
 
 interface BotAudioHealthWindow extends Window {
@@ -35,11 +36,14 @@ export async function startBotAudioHealthMonitor(stream: MediaStream): Promise<v
     lastSignalAt: null,
     rms: 0,
     peakRms: 0,
+    contextState: audioCtx.state,
   };
   const target = window as BotAudioHealthWindow;
   target.__meetingBotAudioHealth = snapshot;
 
   const timer = window.setInterval(() => {
+    if (audioCtx.state === "suspended") void audioCtx.resume().catch(() => undefined);
+    snapshot.contextState = audioCtx.state;
     analyser.getFloatTimeDomainData(data);
     let sumSquares = 0;
     for (let i = 0; i < data.length; i += 1) sumSquares += data[i] * data[i];
