@@ -190,6 +190,31 @@ export async function POST(req: NextRequest) {
       }
 
       const eventPrefix = `${prefix}${eventId}:`;
+      const superseded = await tx.meetingBotSession.findMany({
+        where: {
+          source: "CALENDAR",
+          sourceKey: { startsWith: eventPrefix },
+          status: { in: ["REQUESTED", ...ACTIVE] },
+        },
+        select: { id: true, status: true },
+      });
+      for (const prior of superseded) {
+        if (prior.status === "REQUESTED") {
+          await tx.meetingBotSession.delete({ where: { id: prior.id } });
+          stats.removed += 1;
+        } else {
+          await tx.meetingBotSession.update({
+            where: { id: prior.id },
+            data: {
+              status: "STOP_REQUESTED",
+              lastHeartbeatAt: new Date(),
+              errorMessage: "The Outlook calendar event was rescheduled.",
+            },
+          });
+          stats.stopRequested += 1;
+        }
+      }
+
       const conflict = await tx.meetingBotSession.findFirst({
         where: {
           meetingUrl,
