@@ -13,6 +13,9 @@ describe("Teams lifecycle classification", () => {
     expect(detectTeamsPageState("You were removed from the meeting.")).toBe("REMOVED");
     expect(detectTeamsPageState("The organizer ended the meeting.")).toBe("MEETING_ENDED");
     expect(detectTeamsPageState("Connection lost. Trying to reconnect...")).toBe("RECONNECTING");
+    expect(detectTeamsPageState("You've left the meeting.")).toBe("LEFT");
+    expect(detectTeamsPageState("Sign in to join this meeting.")).toBe("ACCESS_DENIED");
+    expect(detectTeamsPageState("This meeting link is invalid.")).toBe("INVALID_LINK");
   });
 
   it("understands Vietnamese participant counts", () => {
