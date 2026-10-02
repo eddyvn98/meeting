@@ -6,7 +6,7 @@ import type { AttendanceSectionItem } from "@/lib/meeting/overviewSections";
 import type { AttendanceSuggestion } from "@/lib/meeting/types";
 import { resolveMinutesLabels, type MinutesLabels } from "@/lib/meeting/minutesLabels";
 
-const cellInput = "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-sm outline-none read-only:cursor-default focus:border-primary focus:bg-background print:border-none";
+const cellInput = "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-sm outline-none read-only:cursor-default focus:border-primary focus:bg-background print:hidden";
 
 function generateId(): string {
   return `att_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -115,14 +115,14 @@ export function AttendanceTable({
         ))}
       </datalist>
       <div className="overflow-x-auto rounded-md border border-border">
-        <table className="w-full min-w-[560px] border-collapse text-sm">
+        <table className="minutes-attendance-table w-full min-w-[560px] border-collapse text-sm">
           <thead>
             <tr className="bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <th className="border-b border-border px-2 py-2">{labels.name}</th>
               <th className="border-b border-border px-2 py-2">{labels.role}</th>
               <th className="border-b border-border px-2 py-2">{labels.organization}</th>
               <th className="border-b border-border px-2 py-2 text-center">{labels.presentRegrets}</th>
-              {canEdit && <th className="border-b border-border px-2 py-2" />}
+              {canEdit && <th className="border-b border-border px-2 py-2 print:hidden" />}
             </tr>
           </thead>
           <tbody>
@@ -137,6 +137,7 @@ export function AttendanceTable({
                     onChange={(e) => changeName(row, e.target.value)}
                     onBlur={() => commit(draft)}
                   />
+                  <span className="hidden whitespace-pre-wrap break-words text-sm print:inline">{row.name || "—"}</span>
                 </td>
                 <td className="px-2 py-1.5">
                   <input
@@ -150,6 +151,7 @@ export function AttendanceTable({
                     }}
                     placeholder={canEdit ? "e.g. Chair" : ""}
                   />
+                  <span className="hidden whitespace-pre-wrap break-words text-sm print:inline">{row.role || "—"}</span>
                 </td>
                 <td className="px-2 py-1.5">
                   <input
@@ -163,20 +165,24 @@ export function AttendanceTable({
                     }}
                     placeholder={canEdit ? "e.g. Organization" : ""}
                   />
+                  <span className="hidden whitespace-pre-wrap break-words text-sm print:inline">{row.organization || "—"}</span>
                 </td>
                 <td className="px-2 py-1.5 text-center">
                   {canEdit ? (
-                    <div className="inline-flex items-center gap-1.5">
-                      {(["present", "regrets"] as const).map((value) => (
-                        <StatusButton
-                          key={value}
-                          value={value}
-                          active={row.status === value}
-                          disabled={false}
-                          onClick={() => commit(draft.map((r) => (r.id === row.id ? { ...r, status: r.status === value ? null : value } : r)))}
-                        />
-                      ))}
-                    </div>
+                    <>
+                      <div className="inline-flex items-center gap-1.5 print:hidden">
+                        {(["present", "regrets"] as const).map((value) => (
+                          <StatusButton
+                            key={value}
+                            value={value}
+                            active={row.status === value}
+                            disabled={false}
+                            onClick={() => commit(draft.map((r) => (r.id === row.id ? { ...r, status: r.status === value ? null : value } : r)))}
+                          />
+                        ))}
+                      </div>
+                      <span className="hidden print:inline">{row.status === "present" ? "✓" : row.status === "regrets" ? "✕" : "—"}</span>
+                    </>
                   ) : row.status === "present" ? (
                     <Check className="mx-auto h-4 w-4 text-emerald-600" aria-label="Present" />
                   ) : row.status === "regrets" ? (
@@ -186,7 +192,7 @@ export function AttendanceTable({
                   )}
                 </td>
                 {canEdit && (
-                  <td className="px-2 py-1.5 text-right">
+                  <td className="px-2 py-1.5 text-right print:hidden">
                     <button type="button" onClick={() => removeRow(row.id)} aria-label="Remove attendee" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-red-600">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
