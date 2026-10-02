@@ -29,13 +29,13 @@ export const TEAMS_PAGE_STATES = [
 export function detectTeamsPageState(text) {
   if (typeof text !== "string" || !text.trim()) return null;
   if (
-    /you (?:weren't|were not) admitted|request (?:was )?declined|admission (?:was )?denied|someone declined your request|không được chấp nhận|từ chối.*tham gia/i.test(text)
+    /you (?:weren't|were not) admitted|request (?:to join )?(?:was )?declined|your request to join was declined|admission (?:was )?denied|someone declined your request|không được chấp nhận|từ chối.*tham gia/i.test(text)
   ) return "REJECTED";
   if (
-    /you were removed|removed from the meeting|you've been removed|organizer removed you|bạn đã bị (?:xóa|loại).*cuộc họp|đã loại bạn khỏi cuộc họp/i.test(text)
+    /you were removed|removed from the meeting|you've been removed|someone removed you|organizer removed you|bạn đã bị (?:xóa|loại).*cuộc họp|đã loại bạn khỏi cuộc họp/i.test(text)
   ) return "REMOVED";
   if (
-    /meeting has ended|the meeting ended|call ended|organizer ended the meeting|cuộc họp đã kết thúc|cuộc gọi đã kết thúc/i.test(text)
+    /meeting has ended|the meeting ended|this meeting is over|call ended|organizer ended the meeting|cuộc họp đã kết thúc|cuộc gọi đã kết thúc/i.test(text)
   ) return "MEETING_ENDED";
   if (
     /invalid meeting link|meeting link (?:is )?invalid|meeting doesn't exist|meeting does not exist|link has expired|liên kết.*không hợp lệ|cuộc họp không tồn tại/i.test(text)
