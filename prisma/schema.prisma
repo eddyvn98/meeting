@@ -146,6 +146,24 @@ model Meeting {
   @@map("meetings")
 }
 
+model MeetingBotSchedule {
+  id              String                @id @default(cuid())
+  ownerEmail      String
+  meetingUrl      String                @db.Text
+  title           String
+  startAt         DateTime
+  nextRunAt       DateTime?
+  repeat          MeetingScheduleRepeat @default(NONE)
+  enabled         Boolean               @default(true)
+  lastTriggeredAt DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([ownerEmail, nextRunAt])
+  @@index([enabled, nextRunAt])
+  @@map("meeting_bot_schedules")
+}
+
 model MeetingBotSession {
   id              String           @id @default(cuid())
   ownerEmail      String
@@ -881,6 +899,16 @@ enum AudioChunkStatus {
 enum MeetingBotSource {
   MANUAL
   CALENDAR
+  SCHEDULE
+}
+
+enum MeetingScheduleRepeat {
+  NONE
+  DAILY
+  WEEKDAYS
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
 }
 
 enum MeetingBotStatus {
