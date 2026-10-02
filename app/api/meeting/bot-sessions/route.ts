@@ -4,6 +4,7 @@ import { resolveMeetingCallerEmail } from "../_auth";
 import { serializeMeetingBotSession } from "@/lib/meeting/bot/serialize";
 import type { MeetingBotStatus } from "@/lib/meeting/bot/types";
 import { maybePruneTerminalBotSessions } from "@/lib/meeting/bot/pruneBotSessions";
+import { parseBotScheduledAt } from "@/lib/meeting/bot/schedule";
 
 const ACTIVE_STATUSES: MeetingBotStatus[] = [
   "REQUESTED",
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
   const email = await resolveMeetingCallerEmail(req);
   if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let body: { meetingUrl?: unknown; title?: unknown };
+  let body: { meetingUrl?: unknown; title?: unknown; scheduledAt?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -68,6 +69,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "A valid Microsoft Teams meeting URL is required." }, { status: 400 });
   }
 
+  const parsedSchedule = parseBotScheduledAt(body.scheduledAt);
+  if (!parsedSchedule.ok) {
+    return NextResponse.json({ error: parsedSchedule.error }, { status: 400 });
+  }
+
   const existing = await prisma.meetingBotSession.findFirst({
     where: { ownerEmail: email, meetingUrl: normalizedMeetingUrl, status: { in: ACTIVE_STATUSES } },
     orderBy: { createdAt: "desc" },
@@ -75,7 +81,12 @@ export async function POST(req: NextRequest) {
   if (existing) return NextResponse.json(serializeMeetingBotSession(existing), { status: 200 });
 
   const session = await prisma.meetingBotSession.create({
-    data: { ownerEmail: email, meetingUrl: normalizedMeetingUrl, title: serializeTitle(body.title) },
+    data: {
+      ownerEmail: email,
+      meetingUrl: normalizedMeetingUrl,
+      title: serializeTitle(body.title),
+      scheduledAt: parsedSchedule.scheduledAt,
+    },
   });
   return NextResponse.json(serializeMeetingBotSession(session), { status: 201 });
 }
