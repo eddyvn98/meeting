@@ -64,8 +64,9 @@ export function ActionCell({ actions, canEdit, ongoingLabel = "Ongoing", onChang
   const update = (id: string, next: MinutesActionItem) => onChange(items.map((a) => (a.id === id ? next : a)));
 
   return (
-    <div className="flex flex-col gap-1">
-      {items.map((a, i) => {
+    <>
+      <div className="flex flex-col gap-1 print:hidden">
+        {items.map((a, i) => {
         const hasMeta = a.ongoing || Boolean(a.duration) || Boolean(a.deadline);
         return (
           <div key={a.id} className="group flex flex-col gap-0.5">
@@ -115,7 +116,11 @@ export function ActionCell({ actions, canEdit, ongoingLabel = "Ongoing", onChang
             </div>
           </div>
         );
-      })}
-    </div>
+        })}
+      </div>
+      <div className="hidden flex-col gap-1 print:flex">
+        {visible.length > 0 ? visible.map((a) => <ActionDisplay key={a.id} action={a} ongoingLabel={ongoingLabel} />) : <span className="text-sm text-muted-foreground">—</span>}
+      </div>
+    </>
   );
 }
