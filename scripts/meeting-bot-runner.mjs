@@ -16,10 +16,13 @@ const baseUrl = requiredEnv("MEETING_BOT_BASE_URL").replace(/\/$/, "");
 const runnerToken = requiredEnv("MEETING_BOT_RUNNER_TOKEN");
 const runnerId = process.env.MEETING_BOT_RUNNER_ID || `runner-${process.pid}-${randomUUID()}`;
 const pollMs = Number(process.env.MEETING_BOT_POLL_MS || 3000);
-const graphSyncMs = Number(
-  process.env.MEETING_BOT_GRAPH_SYNC_MS ||
-  process.env.MEETING_BOT_CALENDAR_POLL_MS ||
-  60_000,
+const graphSyncMs = Math.max(
+  15_000,
+  Number(
+    process.env.MEETING_BOT_GRAPH_SYNC_MS ||
+    process.env.MEETING_BOT_CALENDAR_POLL_MS ||
+    60_000,
+  ) || 60_000,
 );
 const schedulePollMs = Number(process.env.MEETING_BOT_SCHEDULE_POLL_MS || 15000);
 const maxConcurrency = Math.max(1, Number(process.env.MEETING_BOT_MAX_CONCURRENCY || 2));
