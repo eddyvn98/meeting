@@ -251,7 +251,11 @@ export function MeetingSchedulePanel() {
                     {schedule.title}
                   </span>
                   <span className={schedule.enabled ? "text-xs text-foreground" : "text-xs text-muted-foreground"}>
-                    {schedule.enabled ? "Auto join ON" : "Paused"}
+                    {schedule.enabled
+                      ? "Auto join ON"
+                      : schedule.repeat === "NONE" && schedule.lastTriggeredAt
+                        ? "Completed"
+                        : "Paused"}
                   </span>
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
