@@ -1,0 +1,956 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model ActionItem {
+  id                 String           @id @default(cuid())
+  summaryId          String
+  task               String           @db.Text
+  owner              String?
+  deadline           DateTime?
+  status             ActionItemStatus @default(OPEN)
+  evidenceSegmentIds String[]         @default([])
+  startTimeMs        Int?
+  endTimeMs          Int?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  summary MeetingSummary @relation(fields: [summaryId], references: [id], onDelete: Cascade)
+
+  @@index([summaryId])
+  @@map("meeting_action_items")
+}
+
+model AudioChunk {
+  id          String           @id @default(cuid())
+  meetingId   String
+  sequence    Int
+  storageUrl  String?
+  durationSec Int?
+  sizeBytes   Int?
+  status      AudioChunkStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, sequence])
+  @@index([meetingId])
+  @@map("meeting_audio_chunks")
+}
+
+model Blocker {
+  id                 String   @id @default(cuid())
+  summaryId          String
+  text               String   @db.Text
+  evidenceSegmentIds String[] @default([])
+  timestampMs        Int?
+  createdAt          DateTime @default(now())
+
+  summary MeetingSummary @relation(fields: [summaryId], references: [id], onDelete: Cascade)
+
+  @@index([summaryId])
+  @@map("meeting_blockers")
+}
+
+model Bookmark {
+  id             String   @id @default(cuid())
+  meetingId      String
+  timestampMs    Int
+  label          String?
+  createdByEmail String
+  createdAt      DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, timestampMs])
+  @@map("meeting_bookmarks")
+}
+
+model Decision {
+  id                 String   @id @default(cuid())
+  summaryId          String
+  text               String   @db.Text
+  evidenceSegmentIds String[] @default([])
+  timestampMs        Int?
+  createdAt          DateTime @default(now())
+
+  summary MeetingSummary @relation(fields: [summaryId], references: [id], onDelete: Cascade)
+
+  @@index([summaryId])
+  @@map("meeting_decisions")
+}
+
+model Meeting {
+  id             String        @id @default(cuid())
+  ownerEmail     String
+  title          String
+  status         MeetingStatus @default(UPLOADING)
+  audioUrl       String?
+  durationSec    Int?
+  fileSizeBytes  Int?
+  mimeType       String?
+  /// Whisper language code (e.g. "vi", "en") chosen on the "before you
+  /// record" language picker (MeetingHome.tsx) — see lib/meeting/sttLanguages.ts.
+  /// Whisper does not auto-detect language, so this is what both the local
+  /// (browser) and server STT providers are told to transcribe as.
+  sttLanguage    String        @default("vi")
+  /// Best-effort error message when status = FAILED, shown on the
+  /// Processing screen instead of a bare "failed" state.
+  failureReason  String?
+  /// True when the current READY transcript/summary is the mock-complete
+  /// placeholder (app/api/meeting/[meetingId]/mock-complete/route.ts), not a
+  /// real transcription — lets the result screen offer a real "Retry" action
+  /// instead of a dead-end. transcript/route.ts clears this back to false
+  /// once a real transcript is saved (retry or otherwise).
+  isMockResult   Boolean       @default(false)
+  /// Set once "Create mindmap" (MeetingResultHeader.tsx) succeeds — the
+  /// WorkspaceBoard.id it built, so the button can turn into "View mindmap"
+  /// and link straight back to it instead of only working for the one
+  /// browser tab that was open right after creation.
+  mindmapBoardId String?
+  /// Anonymous read-only link to the Minutes page. The token itself is the
+  /// credential (same model as WorkspaceBoard.publicShareToken); disabling
+  /// keeps the token so re-enabling restores the same link.
+  publicShareEnabled Boolean   @default(false)
+  publicShareToken   String?   @unique
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  /// Optional sidebar folder this meeting has been filed under (see
+  /// MeetingGroup below). Null means "ungrouped" — shown under the sidebar's
+  /// plain day-grouped Recent list instead of a named folder. SetNull on
+  /// group delete so removing a folder never deletes the meetings in it.
+  groupId String?
+  group   MeetingGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  audioChunks        AudioChunk[]
+  transcriptSegments TranscriptSegment[]
+  speakers           Speaker[]
+  speakerMappings    SpeakerMapping[]
+  bookmarks          Bookmark[]
+  summary            MeetingSummary?
+  shares             MeetingShare[]
+  botSession         MeetingBotSession?
+  minutes            MeetingMinutes?
+  minutesTranslations MeetingMinutesTranslation[]
+  minutesComments     MeetingMinutesComment[]
+  notifications       MeetingNotification[]
+
+  @@index([ownerEmail, createdAt])
+  @@index([groupId])
+  @@map("meetings")
+}
+
+model MeetingBotSession {
+  id              String           @id @default(cuid())
+  ownerEmail      String
+  meetingUrl      String           @db.Text
+  title           String
+  source          MeetingBotSource @default(MANUAL)
+  sourceKey       String?
+  scheduledAt     DateTime?
+  status          MeetingBotStatus @default(REQUESTED)
+  runnerId        String?
+  meetingId       String?          @unique
+  lastHeartbeatAt DateTime?
+  errorMessage    String?          @db.Text
+  requestedAt     DateTime         @default(now())
+  startedAt       DateTime?
+  endedAt         DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  meeting Meeting? @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+
+  @@index([ownerEmail, createdAt])
+  @@index([status, requestedAt])
+  @@unique([source, sourceKey])
+  @@map("meeting_bot_sessions")
+}
+
+model MeetingGlossaryTerm {
+  id         String   @id @default(cuid())
+  ownerEmail String
+  term       String
+  /// Optional short gloss (expansion, meaning, correct usage) surfaced to
+  /// the AI prompts alongside the term itself — not shown in transcript
+  /// correction, which only ever replaces with `term`.
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@unique([ownerEmail, term])
+  @@index([ownerEmail])
+  @@map("meeting_glossary_terms")
+}
+
+model MeetingGroup {
+  id         String   @id @default(cuid())
+  ownerEmail String
+  name       String
+  /// Manual sidebar ordering (lower first); set to the current Unix time in
+  /// seconds on creation so new groups sort after existing ones without a
+  /// separate reorder step.
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  meetings Meeting[]
+
+  @@index([ownerEmail, order])
+  @@map("meeting_groups")
+}
+
+model MeetingMinutes {
+  id            String   @id @default(cuid())
+  meetingId     String   @unique
+  /// Defaults to "MINUTES OF <MEETING TITLE>" when unset (computed at read
+  /// time, not stored, so a later meeting rename stays reflected).
+  title         String?
+  /// Free-text, not a DateTime — the MOM layout's "Meeting Date" is a
+  /// single display line the owner may want to phrase loosely (e.g. "23
+  /// Sep 2026" vs an ISO date), same reasoning as MinutesActionItem's
+  /// duration/deadline in overviewSections.ts.
+  meetingDate   String?
+  /// e.g. "09:00 - 10:30" — the MOM layout's single "Meeting Time" line.
+  timeRange     String?
+  venue         String?
+  /// Optional footer note (e.g. confidentiality line) shown under the
+  /// matters table.
+  footnote      String?
+  recordedBy    String?
+  recordedDate  String?
+  /// Free-text distribution list line (e.g. "All attendees, Dept heads").
+  distributed   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("meeting_minutes")
+}
+
+model MeetingMinutesComment {
+  id          String   @id @default(cuid())
+  meetingId   String
+  anchorId    String
+  parentId    String?
+  authorEmail String
+  body        String   @db.Text
+  resolved    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  meeting Meeting                 @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  parent  MeetingMinutesComment?  @relation("MinutesCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies MeetingMinutesComment[] @relation("MinutesCommentReplies")
+
+  @@index([meetingId, createdAt])
+  @@index([parentId])
+  @@map("meeting_minutes_comments")
+}
+
+model MeetingMinutesTranslation {
+  id              String   @id @default(cuid())
+  meetingId       String
+  /// A TRANSLATE_LANGUAGES code, e.g. "vi".
+  language        String
+  content         Json
+  sourceUpdatedAt DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, language])
+  @@map("meeting_minutes_translations")
+}
+
+model MeetingNotification {
+  id             String    @id @default(cuid())
+  recipientEmail String
+  meetingId      String
+  type           String
+  body           String
+  anchorId       String?
+  commentId      String?
+  actorEmail     String?
+  read           Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  emailedAt      DateTime?
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([recipientEmail, createdAt])
+  @@index([meetingId])
+  @@map("meeting_notifications")
+}
+
+model MeetingOverviewSection {
+  id        String   @id @default(cuid())
+  summaryId String
+  kind      String
+  title     String
+  order     Int
+  /// "ai" (generated this run) or "user" (manually added/edited) — no
+  /// editing UI yet in this step, but the column exists so step 2 doesn't
+  /// need another migration.
+  source    String   @default("ai")
+  items     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  summary MeetingSummary @relation(fields: [summaryId], references: [id], onDelete: Cascade)
+
+  @@index([summaryId])
+  @@map("meeting_overview_sections")
+}
+
+model MeetingPersonRole {
+  id             String   @id @default(cuid())
+  ownerEmail     String
+  /// Trimmed + lowercased `name` — the same normalization applied when
+  /// looking this row up, so "Anh Tuấn" and "anh tuấn " resolve to the same
+  /// remembered role.
+  normalizedName String
+  /// The name as the owner typed it (normalizedName is lowercased), shown
+  /// when suggesting a remembered person.
+  displayName    String?
+  role           String
+  /// The person's organization, remembered together with their role.
+  organization   String?
+  updatedAt      DateTime @updatedAt
+
+  @@unique([ownerEmail, normalizedName])
+  @@map("meeting_person_roles")
+}
+
+model MeetingShare {
+  id           String           @id @default(cuid())
+  meetingId    String
+  invitedEmail String
+  invitedBy    String
+  createdAt    DateTime         @default(now())
+  expiresAt    DateTime?
+  revokedAt    DateTime?
+  /// Stage C: viewer (read + ask + translate only) or editor (also sections
+  /// CRUD, summary/minutes PATCH, minutes generate — never share management,
+  /// which stays owner-only). Existing grants migrate to VIEWER, their prior
+  /// behavior, unchanged.
+  role         MeetingShareRole @default(VIEWER)
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, invitedEmail])
+  @@index([invitedEmail])
+  @@map("meeting_shares")
+}
+
+model MeetingSummary {
+  id           String   @id @default(cuid())
+  meetingId    String   @unique
+  overview     String   @db.Text
+  /// Optional short label for the meeting shown alongside the overview
+  /// (e.g. a meeting type badge) — set by the AI, editable later by the
+  /// user in a future step. Null when not classified.
+  meetingLabel String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  meeting       Meeting                  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  topics        Topic[]
+  decisions     Decision[]
+  actionItems   ActionItem[]
+  blockers      Blocker[]
+  openQuestions OpenQuestion[]
+  sections      MeetingOverviewSection[]
+
+  @@map("meeting_summaries")
+}
+
+model MeetingVoiceProfile {
+  id            String   @id @default(cuid())
+  displayName   String   @unique
+  embeddingJson Json
+  sampleCount   Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("meeting_voice_profiles")
+}
+
+model OpenQuestion {
+  id                 String   @id @default(cuid())
+  summaryId          String
+  text               String   @db.Text
+  evidenceSegmentIds String[] @default([])
+  timestampMs        Int?
+  createdAt          DateTime @default(now())
+
+  summary MeetingSummary @relation(fields: [summaryId], references: [id], onDelete: Cascade)
+
+  @@index([summaryId])
+  @@map("meeting_open_questions")
+}
+
+model Speaker {
+  id            String   @id @default(cuid())
+  meetingId     String
+  speakerKey    String
+  createdAt     DateTime @default(now())
+  /// This speaker's final diarization centroid (a WeSpeaker embedding vector,
+  /// stored as a plain JSON number array) — set once when the real
+  /// transcript is saved (transcript/route.ts), null for the mock-complete
+  /// placeholder or if diarization failed entirely for this meeting. Lets a
+  /// later rename (PUT .../speakers) enroll this voice into
+  /// MeetingVoiceProfile so future meetings can recognize it automatically —
+  /// see lib/meeting/stt/diarization/speakerClustering.ts.
+  embeddingJson Json?
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, speakerKey])
+  @@index([meetingId])
+  @@map("meeting_speakers")
+}
+
+model SpeakerMapping {
+  id             String   @id @default(cuid())
+  meetingId      String
+  speakerKey     String
+  displayName    String
+  updatedByEmail String
+  updatedAt      DateTime @updatedAt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, speakerKey])
+  @@index([meetingId])
+  @@map("meeting_speaker_mappings")
+}
+
+model Topic {
+  id                 String   @id @default(cuid())
+  summaryId          String
+  title              String
+  evidenceSegmentIds String[] @default([])
+  order              Int      @default(0)
+  createdAt          DateTime @default(now())
+
+  summary MeetingSummary @relation(fields: [summaryId], references: [id], onDelete: Cascade)
+
+  @@index([summaryId])
+  @@map("meeting_topics")
+}
+
+model TranscriptSegment {
+  id          String   @id @default(cuid())
+  meetingId   String
+  speakerKey  String
+  order       Int
+  startTimeMs Int
+  endTimeMs   Int
+  textEn      String?  @db.Text
+  textVi      String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, order])
+  @@map("meeting_transcript_segments")
+}
+
+model WorkspaceArtifact {
+  id         String                  @id @default(cuid())
+  versionId  String
+  kind       WorkspaceArtifactKind
+  status     WorkspaceArtifactStatus
+  /// Set only when status is READY.
+  storageKey String?
+  mimeType   String?
+  /// Set only when status is FAILED — surfaced for operator debugging, never
+  /// shown verbatim to a viewer (see the resources route's error mapping).
+  error      String?
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+
+  version WorkspaceFileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, kind])
+  @@map("workspace_artifacts")
+}
+
+model WorkspaceBoard {
+  /// Client-generated (crypto.randomUUID()), not server-assigned — matches the
+  /// same id already used for the localStorage-only board so a board created
+  /// before this model existed can be adopted into the DB without remapping.
+  id              String  @id
+  /// Set when this board was created by the one-way Mindmap -> Workspace
+  /// cutover. It is deliberately a soft reference: the legacy tables remain
+  /// the rollback copy and may be retired independently later.
+  sourceMindmapId String? @unique
+  ownerEmail      String
+  title           String
+  /// Bumped on every write; a client sends the revision its local snapshot was
+  /// last saved at, and a stale write is refused with 409 rather than silently
+  /// overwriting newer content — same "why" as Mindmap.revision above, without
+  /// the multi-process realtime-writer complexity.
+  ///
+  /// This comment described the refusal long before anything performed it: the
+  /// column was bumped on every write and never compared, so two people
+  /// editing one board did not conflict — the second save just overwrote the
+  /// first, silently. Enforced now by a compare-and-swap in
+  /// app/api/workspaces/[id]/route.ts PUT.
+  revision        Int     @default(0)
+
+  blocks     Json
+  blockOrder Json
+  connectors Json
+  camera     Json
+  /// Ordered list of saved camera bookmarks (CameraFrame[] — see
+  /// app/workspace/types/camera.ts), each pointing at any region of the
+  /// board regardless of what block types live there. Drives the
+  /// "Presentation" panel/mode: cycling frames pans/zooms the camera instead
+  /// of extracting content into a separate slide, so literally any block can
+  /// be presented. Optional/nullable so existing rows need no backfill.
+  frames     Json?
+
+  /// Map-level layout settings, same "why kept alongside not inside the tree"
+  /// rationale as Mindmap.layoutType above. Persisted server-side so a board
+  /// reopened from a different browser/device (no localStorage cache) or via
+  /// a share link keeps its last-saved layout instead of resetting to the
+  /// hierarchy/right/one-side defaults.
+  treeLayoutDirection         String?
+  treeGrowthMode              String?
+  treeLayoutFamily            String?
+  treeTimelineBranchMode      String?
+  treeTimelineDescendantStyle String?
+  treeCatalogDescendantStyle  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Anonymous, no-login read-only share link — same pattern as
+  /// Mindmap.publicView* above, kept on its own field set (not reused) to
+  /// keep this engine independent. publicShareToken can GET the board
+  /// through app/api/workspaces/public/[token]/route.ts with no auth at all;
+  /// the token itself is the credential.
+  publicShareEnabled   Boolean   @default(false)
+  publicShareToken     String?   @unique
+  publicShareExpiresAt DateTime?
+
+  /// Legacy Mindmap public-link alias kept during the one-way cutover. This
+  /// lets an old /mindmap/view/<token> URL open the same Workspace board.
+  legacyPublicShareEnabled   Boolean   @default(false)
+  legacyPublicShareToken     String?   @unique
+  legacyPublicShareExpiresAt DateTime?
+
+  /// Owner's choice about how much per-block edit history collaborators may
+  /// see — same semantics as Mindmap.shareFullHistory. false (default): a
+  /// collaborator only sees edit events from the moment they were invited,
+  /// so work done before the invite stays private to the owner. true: the
+  /// whole history is shared along with the board.
+  shareFullHistory Boolean @default(false)
+
+  shares             WorkspaceBoardShare[]
+  comments           WorkspaceBoardComment[]
+  notifications      WorkspaceNotification[]
+  presence           WorkspacePresence[]
+  snapshots          WorkspaceBoardSnapshot[]
+  editEvents         WorkspaceBoardEditEvent[]
+  hides              WorkspaceBoardHide[]
+  views              WorkspaceBoardView[]
+  sourceDocuments    WorkspaceSourceDocument[]
+  knowledgeChunks    WorkspaceKnowledgeChunk[]
+  resources          WorkspaceResource[]
+  resourceReferences WorkspaceResourceReference[]
+  chatMigrations     WorkspaceBoardChatMigration[]
+
+  @@index([ownerEmail])
+  @@map("workspace_boards")
+}
+
+model WorkspaceBoardChatMigration {
+  id         String   @id @default(cuid())
+  boardId    String
+  userEmail  String
+  migratedAt DateTime @default(now())
+
+  board WorkspaceBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userEmail])
+  @@index([userEmail])
+  @@map("workspace_board_chat_migrations")
+}
+
+model WorkspaceBoardComment {
+  id          String   @id @default(cuid())
+  boardId     String
+  blockId     String
+  authorEmail String
+  body        String   @db.Text
+  resolved    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  /// Null for a top-level comment; set for a reply. One level deep only —
+  /// a reply's own parentId always points at a top-level comment, never at
+  /// another reply (enforced in the API, not the schema).
+  parentId    String?
+
+  board   WorkspaceBoard          @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  parent  WorkspaceBoardComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies WorkspaceBoardComment[] @relation("CommentReplies")
+
+  @@index([boardId, blockId])
+  /// The list route reads a whole board oldest-first; the index above
+  /// serves that filter by prefix but not the ordering, so without this
+  /// every thread fetch sorts.
+  @@index([boardId, createdAt])
+  @@index([parentId])
+  @@map("workspace_board_comments")
+}
+
+model WorkspaceBoardEditEvent {
+  id           String   @id @default(cuid())
+  boardId      String
+  blockId      String
+  actorEmail   String
+  opType       String
+  blockVersion Json?
+  createdAt    DateTime @default(now())
+
+  board WorkspaceBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([boardId, blockId, createdAt])
+  @@map("workspace_board_edit_events")
+}
+
+model WorkspaceBoardHide {
+  id        String   @id @default(cuid())
+  boardId   String
+  userEmail String
+  hiddenAt  DateTime @default(now())
+
+  board WorkspaceBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userEmail])
+  @@index([userEmail, hiddenAt])
+  @@map("workspace_board_hides")
+}
+
+model WorkspaceBoardShare {
+  id           String             @id @default(cuid())
+  boardId      String
+  invitedEmail String
+  role         WorkspaceShareRole
+  invitedBy    String
+  createdAt    DateTime           @default(now())
+  /// When the role last changed. Legacy MindmapShare has always had this;
+  /// without it a demotion from EDITOR to VIEWER leaves no trace of when,
+  /// which is the one question asked afterwards.
+  updatedAt    DateTime           @default(now()) @updatedAt
+
+  board WorkspaceBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, invitedEmail])
+  @@index([invitedEmail])
+  @@map("workspace_board_shares")
+}
+
+model WorkspaceBoardSnapshot {
+  id      String @id @default(cuid())
+  boardId String
+
+  blocks     Json
+  blockOrder Json
+  connectors Json
+
+  /// Optional human-friendly label for a manual "save version" checkpoint;
+  /// null for autosave-triggered checkpoints.
+  label              String?
+  createdBy          String
+  createdAt          DateTime @default(now())
+  /// Revision carried by a legacy Mindmap snapshot. Workspace history does
+  /// not use it for conflict detection, but retaining it keeps old snapshot
+  /// provenance available for audits and future restore tooling.
+  legacyBaseRevision Int?
+
+  board WorkspaceBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([boardId, createdAt])
+  @@map("workspace_board_snapshots")
+}
+
+model WorkspaceBoardView {
+  id         String   @id @default(cuid())
+  boardId    String
+  userEmail  String
+  lastSeenAt DateTime @default(now())
+
+  board WorkspaceBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userEmail])
+  @@index([userEmail])
+  @@map("workspace_board_views")
+}
+
+model WorkspaceFileVersion {
+  id             String   @id @default(cuid())
+  resourceId     String
+  /// 1-based, sequential per resource.
+  versionNumber  Int
+  storageKey     String
+  sizeBytes      BigInt
+  /// sha256 hex of the stored bytes.
+  checksum       String
+  mimeType       String
+  /// Lower-cased and CHECK-constrained like every other workspace identity
+  /// column — see 20260904100000_normalize_workspace_emails.
+  createdByEmail String
+  createdAt      DateTime @default(now())
+
+  resource   WorkspaceResource            @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  references WorkspaceResourceReference[]
+  artifacts  WorkspaceArtifact[]
+
+  @@unique([resourceId, versionNumber])
+  @@map("workspace_file_versions")
+}
+
+model WorkspaceKnowledgeChunk {
+  id               String                       @id @default(cuid())
+  boardId          String
+  sourceType       WorkspaceKnowledgeSourceType
+  sourceDocumentId String?
+  /// Set for a BLOCK-sourced chunk; null for a DOCUMENT one.
+  blockId          String?
+  content          String                       @db.Text
+  createdAt        DateTime                     @default(now())
+  /// 384-dim vector from all-MiniLM-L6-v2, computed in-process by
+  /// lib/embeddings.ts — no embedding-provider key needed. A plain Float[]
+  /// rather than pgvector, for the same reason legacy chose one: the `vector`
+  /// extension is not installed here, and at a few thousand chunks per board
+  /// similarity in JS is not the bottleneck. Prisma list fields are never
+  /// null, so an empty array means "not embedded yet".
+  embedding        Float[]                      @default([])
+
+  board          WorkspaceBoard           @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  sourceDocument WorkspaceSourceDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([boardId])
+  /// The block-resync path diffs one board's BLOCK-sourced chunks.
+  @@index([boardId, sourceType])
+  @@map("workspace_knowledge_chunks")
+}
+
+model WorkspaceNotification {
+  id             String                    @id @default(cuid())
+  recipientEmail String
+  boardId        String
+  type           WorkspaceNotificationType
+  body           String
+  read           Boolean                   @default(false)
+  createdAt      DateTime                  @default(now())
+  /// What this notification points at, so the bell can deep-link the way
+  /// MindmapNotification.nodeId/commentId does. Null for a board-level
+  /// notification (SHARE_INVITE, SHARE_LEFT) which anchors to nothing
+  /// smaller than the board itself.
+  blockId        String?
+  commentId      String?
+  /// Who caused it, as a field rather than only baked into `body` — lets the
+  /// UI re-render the actor (avatar/initials) without parsing the string.
+  actorEmail     String?
+
+  board WorkspaceBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  /// The bell's only query is this recipient, newest first, 50 rows — it
+  /// never filters on `read`, so `read` must not sit between the filter and
+  /// the sort. Deliberately not legacy's (read, createdAt) shape, whose
+  /// middle column exists for a query v2 does not make.
+  @@index([recipientEmail, createdAt])
+  @@map("workspace_notifications")
+}
+
+model WorkspacePresence {
+  boardId         String
+  email           String
+  lastSeenAt      DateTime @default(now()) @updatedAt
+  /// Which block this viewer currently has selected, if any — powers the
+  /// presence focus ring (a colored border on a block another collaborator
+  /// is looking at). Null when nothing is selected; overwritten on every
+  /// heartbeat, not append-only.
+  selectedBlockId String?
+  /// Which block this viewer is actively editing, if any. Cleared when the
+  /// editor closes or loses focus.
+  editingBlockId  String?
+
+  board WorkspaceBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@id([boardId, email])
+  @@map("workspace_presence")
+}
+
+model WorkspaceResource {
+  id             String                @id @default(cuid())
+  boardId        String
+  kind           WorkspaceResourceKind
+  filename       String
+  mimeType       String
+  /// Lower-cased and CHECK-constrained like every other workspace identity
+  /// column — see 20260904100000_normalize_workspace_emails.
+  createdByEmail String
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  /// Optional link back to the extracted-text row for the same upload, so a
+  /// future checkpoint can unify the two without a breaking rewrite of
+  /// WorkspaceSourceDocument. Null until something actually sets it.
+  sourceDocumentId String?                  @unique
+  sourceDocument   WorkspaceSourceDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+
+  board      WorkspaceBoard               @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  versions   WorkspaceFileVersion[]
+  references WorkspaceResourceReference[]
+
+  @@index([boardId, createdAt])
+  @@map("workspace_resources")
+}
+
+model WorkspaceResourceReference {
+  id         String   @id @default(cuid())
+  boardId    String
+  blockId    String
+  resourceId String
+  /// Null means "follow latest version"; set means the reference is pinned to
+  /// one immutable version.
+  versionId  String?
+  createdAt  DateTime @default(now())
+
+  board    WorkspaceBoard        @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  resource WorkspaceResource     @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  version  WorkspaceFileVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+
+  @@index([boardId, blockId])
+  @@index([resourceId])
+  @@map("workspace_resource_references")
+}
+
+model WorkspaceSourceDocument {
+  id              String   @id @default(cuid())
+  boardId         String
+  filename        String
+  mimeType        String
+  extractedText   String   @db.Text
+  /// Lower-cased and CHECK-constrained like every other workspace identity
+  /// column — see 20260904100000_normalize_workspace_emails.
+  uploadedByEmail String
+  createdAt       DateTime @default(now())
+
+  board    WorkspaceBoard            @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  chunks   WorkspaceKnowledgeChunk[]
+  /// Forward-compat seam for Checkpoint 5 (workspace-resource-roadmap.md): set
+  /// once a later checkpoint starts persisting original bytes alongside the
+  /// extracted text of a newly-uploaded document. Left null for every row
+  /// created before this column existed — nothing backfills it.
+  resource WorkspaceResource?
+
+  /// The list route reads one board's documents newest-first, so the index
+  /// carries createdAt. Legacy indexes mindmapId alone and leaves its own
+  /// ordering unsupported; following the query rather than copying the shape
+  /// is the same correction made for the notification bell.
+  @@index([boardId, createdAt])
+  @@map("workspace_source_documents")
+}
+
+enum ActionItemStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+}
+
+enum AudioChunkStatus {
+  PENDING
+  UPLOADED
+  FAILED
+}
+
+enum MeetingBotSource {
+  MANUAL
+  CALENDAR
+}
+
+enum MeetingBotStatus {
+  REQUESTED
+  CLAIMED
+  JOINING
+  LOBBY
+  JOINED
+  CAPTURING
+  STOP_REQUESTED
+  ENDED
+  FAILED
+}
+
+enum MeetingShareRole {
+  VIEWER
+  EDITOR
+}
+
+enum MeetingStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum WorkspaceArtifactKind {
+  /// A rendered PDF standing in for an Office document (docx/xlsx/pptx/…)
+  /// so the same PDF-preview iframe path (FileBlock.tsx) can show it. Not
+  /// used for a version whose own mimeType is already application/pdf or
+  /// image/* — those preview directly, no artifact needed.
+  PDF_PREVIEW
+}
+
+enum WorkspaceArtifactStatus {
+  PENDING
+  READY
+  FAILED
+  /// No converter is available/configured on this deployment (e.g.
+  /// LibreOffice not installed) — distinct from FAILED so the UI can say
+  /// "preview isn't supported here" instead of "something went wrong,
+  /// retry", which would be misleading since retrying can't help.
+  UNSUPPORTED
+}
+
+enum WorkspaceKnowledgeSourceType {
+  DOCUMENT
+  /// A block's own title/description text, re-synced when the board is saved.
+  /// Legacy's equivalent member is NODE; the rename tracks node -> block.
+  BLOCK
+}
+
+enum WorkspaceNotificationType {
+  NEW_COMMENT
+  /// Somebody replied to the recipient's own comment. Higher signal than
+  /// NEW_COMMENT and sent instead of it, so one reply produces one row per
+  /// person: the parent's author gets REPLY, everyone else NEW_COMMENT.
+  REPLY
+  SHARE_INVITE
+  /// A collaborator voluntarily left the board; recipient is the owner —
+  /// same trigger as MindmapNotificationType.SHARE_LEFT.
+  SHARE_LEFT
+}
+
+enum WorkspaceResourceKind {
+  DOCUMENT
+  IMAGE
+}
+
+enum WorkspaceShareRole {
+  VIEWER
+  EDITOR
+}
