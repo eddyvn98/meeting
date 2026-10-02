@@ -17,6 +17,7 @@ const runnerToken = requiredEnv("MEETING_BOT_RUNNER_TOKEN");
 const runnerId = process.env.MEETING_BOT_RUNNER_ID || `runner-${process.pid}-${randomUUID()}`;
 const pollMs = Number(process.env.MEETING_BOT_POLL_MS || 3000);
 const calendarPollMs = Number(process.env.MEETING_BOT_CALENDAR_POLL_MS || 15000);
+const schedulePollMs = Number(process.env.MEETING_BOT_SCHEDULE_POLL_MS || 15000);
 const maxConcurrency = Math.max(1, Number(process.env.MEETING_BOT_MAX_CONCURRENCY || 2));
 // How often the runner polls the meeting status while waiting for
 // client-side post-processing (STT/diarization/insights) to finish after
@@ -380,10 +381,17 @@ async function main() {
   if (!calendarSync) console.log("Calendar discovery is disabled until Microsoft Graph credentials are configured.");
   const active = new Map();
   let nextCalendarSync = 0;
+  let nextScheduleDispatch = 0;
   while (true) {
     if (calendarSync && Date.now() >= nextCalendarSync) {
       await calendarSync();
       nextCalendarSync = Date.now() + calendarPollMs;
+    }
+    if (Date.now() >= nextScheduleDispatch) {
+      await api("/api/meeting/bot-schedules/dispatch", { method: "POST" }).catch((error) => {
+        console.error("[meeting-bot] schedule dispatch failed:", error instanceof Error ? error.message : error);
+      });
+      nextScheduleDispatch = Date.now() + schedulePollMs;
     }
     while (active.size < maxConcurrency) {
       const session = await api("/api/meeting/bot-sessions/claim", { method: "POST" });
