@@ -35,7 +35,7 @@ Any unrecoverable infrastructure failure may end at FAILED.
 | Teams Chromium closes/crashes | Runner attempts a fresh Teams browser and rejoins. |
 | Recorder browser crashes | Current session fails and an idempotent continuation session is queued. |
 | Runner dies before CAPTURING | Expired lease returns the session to REQUESTED. |
-| Runner dies during CAPTURING | Session becomes FAILED rather than risking two simultaneous recorders. |
+| Runner dies during CAPTURING | After the longer capture lease expires, the old session becomes FAILED and one bounded continuation is queued. |
 | App/API temporarily unavailable | Runner claim loop retries instead of exiting; heartbeat calls are best-effort. |
 | Graph outage causes an old occurrence to arrive late | CALENDAR late-grace marks it missed instead of joining much later. |
 | Web schedule and Graph describe the same occurrence | URL/time dedupe and advisory lock allow one bot session. |
@@ -54,6 +54,7 @@ MEETING_BOT_RECONNECT_TIMEOUT_MS=120000
 MEETING_BOT_REJOIN_WINDOW_MS=120000
 MEETING_BOT_REJOIN_ATTEMPT_MS=30000
 MEETING_BOT_MAX_CONTINUATIONS=2
+MEETING_BOT_CAPTURE_LEASE_TIMEOUT_MS=300000
 
 MEETING_BOT_AUDIO_INITIAL_SIGNAL_MS=60000
 MEETING_BOT_AUDIO_SILENCE_MS=180000
