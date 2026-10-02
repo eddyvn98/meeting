@@ -1,5 +1,6 @@
 import { chromium } from "@playwright/test";
 import { createPulseAudioSession } from "./meeting-bot-audio.mjs";
+import { maybeRecoverSilentAudio } from "./meeting-bot-audio-watch.mjs";
 import {
   initialAloneState,
   isAloneFromCount,
@@ -7,9 +8,8 @@ import {
   nextAloneState,
   parseParticipantCount,
 } from "./meeting-bot-lifecycle.mjs";
+import { createTeamsRecovery } from "./meeting-bot-recovery.mjs";
 import {
-  clickIfVisible,
-  codedError,
   errorCode,
   prepareTeamsPage,
   readTeamsPage,
@@ -24,25 +24,14 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function createBotSessionRunner({
-  api,
-  emit,
-  recorderRuntime,
-  runnerId,
-  teamsDisplayName,
-  browserChannel,
-  browserExecutable,
-  headless,
-  pollMs,
-  lobbyTimeoutMs,
-  reconnectTimeoutMs,
-  rejoinWindowMs,
-  rejoinAttemptMs,
-  aloneTimeoutMs,
-  maxDurationMs,
-  audioInitialWarnMs,
-  audioSilenceWarnMs,
-}) {
+export function createBotSessionRunner(config) {
+  const {
+    api, emit, recorderRuntime, runnerId, teamsDisplayName,
+    browserChannel, browserExecutable, headless, pollMs,
+    lobbyTimeoutMs, reconnectTimeoutMs, rejoinWindowMs, rejoinAttemptMs,
+    aloneTimeoutMs, maxDurationMs, audioInitialWarnMs, audioSilenceWarnMs,
+  } = config;
+
   function createHeartbeat(sessionId) {
     let status = "CLAIMED";
     let extra = {};
@@ -84,8 +73,13 @@ export function createBotSessionRunner({
         "--disable-notifications",
       ],
     });
-    const context = await browser.newContext({ storageState, viewport: { width: 1440, height: 1000 } });
-    await context.grantPermissions(["microphone", "camera"], { origin: "https://teams.microsoft.com" });
+    const context = await browser.newContext({
+      storageState,
+      viewport: { width: 1440, height: 1000 },
+    });
+    await context.grantPermissions(["microphone", "camera"], {
+      origin: "https://teams.microsoft.com",
+    });
     const page = await context.newPage();
     return { browser, context, page };
   }
@@ -105,109 +99,40 @@ export function createBotSessionRunner({
     });
   }
 
-  async function reconnectTeams(current, session, heartbeat, sinkName, storageState) {
-    await closeTeams(current);
-    const deadline = Date.now() + reconnectTimeoutMs;
-    let lastError;
-
-    while (Date.now() < deadline) {
-      let next;
-      try {
-        next = await launchTeams(sinkName, storageState);
-        if (await joinTeams(next, session, heartbeat, Math.min(60_000, reconnectTimeoutMs))) return next;
-        await closeTeams(next);
-        return null;
-      } catch (error) {
-        lastError = error;
-        await closeTeams(next);
-        const code = errorCode(error);
-        if (code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED") throw error;
-        await sleep(5_000);
-      }
-    }
-
-    throw codedError(
-      "TEAMS_RECOVERY_FAILED",
-      `Teams connection could not be recovered: ${lastError instanceof Error ? lastError.message : "timeout"}`,
-    );
-  }
-
-  async function confirmSomeoneElseIsPresent(page, timeoutMs = 30_000) {
-    await clickIfVisible(page, [/^People$/i, /^Participants$/i, /Người tham gia/i]).catch(() => false);
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      const snapshot = await readTeamsPage(page);
-      if (["REMOVED", "REJECTED", "MEETING_ENDED", "PAGE_CLOSED"].includes(snapshot.state)) return false;
-      const count = parseParticipantCount(snapshot.body);
-      if (typeof count === "number" && count > 1) return true;
-      await sleep(2_000);
-    }
-    return false;
-  }
-
-  async function waitForMeetingRestart(current, session, heartbeat, sinkName, storageState) {
-    if (rejoinWindowMs <= 0) return null;
-    const deadline = Date.now() + rejoinWindowMs;
-    let runtime = current;
-    await sleep(Math.min(15_000, Math.max(0, rejoinWindowMs)));
-
-    while (Date.now() < deadline) {
-      try {
-        runtime = await reconnectTeams(runtime, session, heartbeat, sinkName, storageState);
-        if (!runtime) return null;
-        if (await confirmSomeoneElseIsPresent(runtime.page)) return runtime;
-      } catch (error) {
-        const code = errorCode(error);
-        if (code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED") throw error;
-      }
-      await closeTeams(runtime);
-      runtime = null;
-      await sleep(Math.min(rejoinAttemptMs, Math.max(0, deadline - Date.now())));
-    }
-    return null;
-  }
-
-  async function maybeRecoverSilentAudio({
-    recorder,
-    teamsRuntime,
-    session,
-    heartbeat,
-    sink,
-    storageState,
-    participantCount,
-    lastRecoveryAt,
-  }) {
-    const health = await recorderRuntime.audioHealth(recorder);
-    if (!health) return { teamsRuntime, lastRecoveryAt };
-
-    const now = Date.now();
-    const noInitialSignal = health.lastSignalAt === null && now - health.startedAt >= audioInitialWarnMs;
-    const staleSignal = health.lastSignalAt !== null && now - health.lastSignalAt >= audioSilenceWarnMs;
-    if (!noInitialSignal && !staleSignal) return { teamsRuntime, lastRecoveryAt };
-
-    if (!lastRecoveryAt || now - lastRecoveryAt >= 10 * 60_000) {
-      console.warn(
-        `[meeting-bot] session ${session.id} audio signal is silent; rms=${health.rms.toFixed(6)} peak=${health.peakRms.toFixed(6)}.`,
-      );
-      if (typeof participantCount === "number" && participantCount > 1) {
-        await recorderRuntime.pause(recorder);
-        const recovered = await reconnectTeams(
-          teamsRuntime, session, heartbeat, sink.sinkName, storageState,
-        );
-        if (!recovered) throw codedError("TEAMS_RECOVERY_FAILED", "Teams audio route recovery stopped.");
-        await recorderRuntime.resume(recorder);
-        return { teamsRuntime: recovered, lastRecoveryAt: now };
-      }
-      return { teamsRuntime, lastRecoveryAt: now };
-    }
-    return { teamsRuntime, lastRecoveryAt };
-  }
+  const recovery = createTeamsRecovery({
+    launchTeams,
+    closeTeams,
+    joinTeams,
+    reconnectTimeoutMs,
+    rejoinWindowMs,
+    rejoinAttemptMs,
+  });
 
   async function requestContinuation(session) {
     return api(`/api/meeting/bot-sessions/${encodeURIComponent(session.id)}/continue`, {
       method: "POST",
       body: JSON.stringify({ runnerId }),
     }).catch(() => null);
+  }
+
+  function intentionalExit(error) {
+    const code = errorCode(error);
+    return code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED";
+  }
+
+  async function recoverTeamsOrSetExit(args, errorToMessage) {
+    try {
+      const runtime = await recovery.reconnectTeams(...args);
+      return { runtime, exitMessage: null };
+    } catch (error) {
+      if (intentionalExit(error)) {
+        return {
+          runtime: null,
+          exitMessage: error instanceof Error ? error.message : errorToMessage,
+        };
+      }
+      throw error;
+    }
   }
 
   async function runSession(session, storageState) {
@@ -233,23 +158,19 @@ export function createBotSessionRunner({
 
       while (true) {
         if (!recorderRuntime.isAlive(recorder)) {
-          throw codedError("RECORDER_CRASHED", "Recorder browser crashed while the meeting was active.");
+          const error = new Error("Recorder browser crashed while the meeting was active.");
+          error.code = "RECORDER_CRASHED";
+          throw error;
         }
 
         if (!teamsRuntime?.browser.isConnected() || teamsRuntime.page.isClosed()) {
           await recorderRuntime.pause(recorder);
-          try {
-            teamsRuntime = await reconnectTeams(
-              teamsRuntime, session, heartbeat, sink.sinkName, storageState,
-            );
-          } catch (error) {
-            const code = errorCode(error);
-            if (code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED") {
-              exitMessage = error instanceof Error ? error.message : "The bot was removed from Teams.";
-              break;
-            }
-            throw error;
-          }
+          const recovered = await recoverTeamsOrSetExit(
+            [teamsRuntime, session, heartbeat, sink.sinkName, storageState],
+            "The bot was removed from Teams.",
+          );
+          teamsRuntime = recovered.runtime;
+          if (recovered.exitMessage) { exitMessage = recovered.exitMessage; break; }
           if (!teamsRuntime) break;
           await recorderRuntime.resume(recorder);
           continue;
@@ -264,26 +185,19 @@ export function createBotSessionRunner({
           exitMessage = "The bot was rejected from the Teams meeting.";
           break;
         }
+
         if (snapshot.state === "MEETING_ENDED") {
           await recorderRuntime.pause(recorder);
-          let restarted;
           try {
-            restarted = await waitForMeetingRestart(
+            teamsRuntime = await recovery.waitForMeetingRestart(
               teamsRuntime, session, heartbeat, sink.sinkName, storageState,
             );
           } catch (error) {
-            const code = errorCode(error);
-            if (code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED") {
-              exitMessage = error instanceof Error ? error.message : "The bot was not admitted again.";
-              break;
-            }
-            throw error;
-          }
-          teamsRuntime = restarted;
-          if (!restarted) {
-            exitMessage = "The Teams meeting ended.";
+            if (!intentionalExit(error)) throw error;
+            exitMessage = error instanceof Error ? error.message : "The bot was not admitted again.";
             break;
           }
+          if (!teamsRuntime) { exitMessage = "The Teams meeting ended."; break; }
           await recorderRuntime.resume(recorder);
           aloneState = initialAloneState();
           reconnectingSince = null;
@@ -294,26 +208,18 @@ export function createBotSessionRunner({
           reconnectingSince ??= Date.now();
           if (Date.now() - reconnectingSince >= 15_000) {
             await recorderRuntime.pause(recorder);
-            try {
-              teamsRuntime = await reconnectTeams(
-                teamsRuntime, session, heartbeat, sink.sinkName, storageState,
-              );
-            } catch (error) {
-              const code = errorCode(error);
-              if (code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED") {
-                exitMessage = error instanceof Error ? error.message : "The bot was removed while reconnecting.";
-                break;
-              }
-              throw error;
-            }
+            const recovered = await recoverTeamsOrSetExit(
+              [teamsRuntime, session, heartbeat, sink.sinkName, storageState],
+              "The bot was removed while reconnecting.",
+            );
+            teamsRuntime = recovered.runtime;
+            if (recovered.exitMessage) { exitMessage = recovered.exitMessage; break; }
             if (!teamsRuntime) break;
             await recorderRuntime.resume(recorder);
             reconnectingSince = null;
             continue;
           }
-        } else {
-          reconnectingSince = null;
-        }
+        } else reconnectingSince = null;
 
         if (await shouldStop(session.id)) {
           exitMessage = "The bot was stopped by the Meeting application.";
@@ -328,10 +234,7 @@ export function createBotSessionRunner({
 
         const participantCount = parseParticipantCount(snapshot.body);
         const aloneResult = nextAloneState(
-          aloneState,
-          isAloneFromCount(participantCount),
-          nowMs,
-          aloneTimeoutMs,
+          aloneState, isAloneFromCount(participantCount), nowMs, aloneTimeoutMs,
         );
         aloneState = { aloneSinceMs: aloneResult.aloneSinceMs };
         if (aloneResult.shouldEnd) {
@@ -339,9 +242,10 @@ export function createBotSessionRunner({
           break;
         }
 
-        let audioRecovery;
         try {
-          audioRecovery = await maybeRecoverSilentAudio({
+          const audioRecovery = await maybeRecoverSilentAudio({
+            recorderRuntime,
+            reconnectTeams: recovery.reconnectTeams,
             recorder,
             teamsRuntime,
             session,
@@ -350,17 +254,16 @@ export function createBotSessionRunner({
             storageState,
             participantCount,
             lastRecoveryAt: lastAudioRecoveryAt,
+            audioInitialWarnMs,
+            audioSilenceWarnMs,
           });
+          teamsRuntime = audioRecovery.teamsRuntime;
+          lastAudioRecoveryAt = audioRecovery.lastRecoveryAt;
         } catch (error) {
-          const code = errorCode(error);
-          if (code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED") {
-            exitMessage = error instanceof Error ? error.message : "The bot was removed during audio recovery.";
-            break;
-          }
-          throw error;
+          if (!intentionalExit(error)) throw error;
+          exitMessage = error instanceof Error ? error.message : "The bot was removed during audio recovery.";
+          break;
         }
-        teamsRuntime = audioRecovery.teamsRuntime;
-        lastAudioRecoveryAt = audioRecovery.lastRecoveryAt;
 
         await heartbeat.update("CAPTURING", { meetingId: recorder.meetingId });
         await sleep(pollMs);
@@ -389,14 +292,13 @@ export function createBotSessionRunner({
       const errorMessage = error instanceof Error ? error.message : String(error);
       const failedMeetingId = recorder?.meetingId || error?.meetingId;
 
-      if (code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED") {
+      if (intentionalExit(error) && !recorder) {
         await heartbeat.update("ENDED", { errorMessage }).catch(() => undefined);
       } else {
         await heartbeat.update("FAILED", {
           ...(failedMeetingId ? { meetingId: failedMeetingId } : {}),
           errorMessage,
         }).catch(() => undefined);
-
         if (["RECORDER_CRASHED", "TEAMS_RECOVERY_FAILED", "TEAMS_PAGE_CLOSED"].includes(code)) {
           await requestContinuation(session);
         }
