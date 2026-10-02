@@ -154,8 +154,26 @@ async function processWithServer(
   sampleRate: number,
   onChunkProgress?: (chunkIndex: number, chunkCount: number) => void,
 ): Promise<ProcessingOutcome> {
-  const chunked = await runChunkedServerTranscription(meetingId, audio, sampleRate, onChunkProgress);
-  return saveTagged(meetingId, chunked.segments, chunked.spans, chunked.centroids);
+  // Same two-phase path as browser/API processing: get durable text first,
+  // start Overview generation immediately, then detect speakers separately.
+  const chunked = await runChunkedServerTranscription(
+    meetingId,
+    audio,
+    sampleRate,
+    onChunkProgress,
+    { textOnly: true },
+  );
+  if (chunked.segments.length === 0) return failed("No speech was detected in the recording.");
+
+  const initialTranscript = chunked.segments.map((s) => ({ ...s, speakerIndex: 0 }));
+  if (!(await saveTranscript(meetingId, initialTranscript, [], true))) {
+    return failed("The transcript could not be saved.");
+  }
+
+  void enrichTranscriptWithDiarization(meetingId, chunked.segments, () =>
+    runChunkedServerDiarization(meetingId, audio, sampleRate),
+  );
+  return { ok: true };
 }
 
 /** Free desktop path: in-browser model, retrying the whole meeting on the
