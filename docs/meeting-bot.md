@@ -1,68 +1,103 @@
-# Meeting Bot - test and deployment guide
+# Meeting Bot - scheduling and deployment guide
 
 ## Goal
 
-Prove the unattended Teams meeting workflow end-to-end before asking a Microsoft 365 administrator for calendar permissions.
+Run the complete Meeting workflow without requiring a Teams custom app or Microsoft Graph calendar access:
 
-The current design is a **Teams Web browser bot**, not a Microsoft Graph Communications media bot. It joins the meeting as a browser participant named `Meeting STT Assistant`, routes Teams audio through PulseAudio, records through the existing Meeting STT UI, finalizes processing, and leaves automatically.
+1. Paste a Teams join link or the full meeting invitation into the Meeting web app.
+2. Set or confirm the meeting start time.
+3. Optionally choose a repeat rule.
+4. Save.
+5. The Linux runner joins automatically near the scheduled time.
+6. A participant admits `Meeting STT Assistant` from the Teams lobby when required.
+7. Existing recording, STT, summary, minutes and action-item processing runs normally.
+8. The bot leaves when the call ends or its configured safety timeout is reached.
 
-## What can be tested without Microsoft Graph
+## Internal schedules
 
-The `/meeting/bot` page supports a **Scheduled test time**. A scheduled manual session is stored in the same `meeting_bot_sessions` queue as a calendar-discovered session. The runner's claim endpoint does not distinguish between the two when deciding when to start.
+The `/meeting/bot` page is the source of truth for V1 scheduling. It does not depend on Outlook or Microsoft Graph.
 
-This lets you validate:
+A schedule stores:
 
-- scheduling
-- claim timing
-- Teams Web navigation
-- lobby detection
-- audio routing
-- recording creation
-- STT/finalization
-- stop handling
-- automatic leave when the call ends
-- automatic leave after the bot is alone
-- maximum call duration
-- stale runner recovery
+- Teams meeting URL
+- title
+- first start time
+- next run time
+- repeat rule
+- enabled/paused state
+- last triggered occurrence
 
-Calendar discovery itself is the only step that remains untested until Microsoft Graph credentials are supplied.
+Supported repeat rules:
+
+- Never
+- Every day
+- Every weekday
+- Every week
+- Every 2 weeks
+- Every month
+
+The runner polls `/api/meeting/bot-schedules/dispatch`. When an occurrence is due, the API creates one `SCHEDULE` bot session using a unique occurrence key, advances the schedule to its next run, and the normal bot-session claim flow takes over. Repeated polling therefore does not create duplicate sessions for the same occurrence.
+
+## Pasting an invitation
+
+The scheduler accepts either:
+
+- a plain Teams join URL, or
+- copied Outlook/Teams invitation text.
+
+When invitation text contains recognizable data, the browser extracts:
+
+- Teams join URL
+- meeting title
+- start date/time
+
+The extracted values remain editable before saving. If only a link is pasted, the user simply chooses the date/time manually.
+
+Numeric dates are interpreted as day/month/year, matching the primary deployment locale.
+
+## Database migration
+
+After pulling a version that contains recurring schedules, apply migrations before starting the app:
+
+```bash
+pnpm install
+pnpm exec prisma migrate deploy
+pnpm run prisma:generate
+```
+
+The migration adds `meeting_bot_schedules`, the `MeetingScheduleRepeat` enum and the `SCHEDULE` bot-session source.
 
 ## Linux runner prerequisites
 
-Use a Linux host. The runner intentionally refuses to start on Windows or macOS.
+The unattended bot runner currently requires Linux with a Pulse-compatible audio server and Chromium.
 
-Typical Debian/Ubuntu packages:
+Typical Debian/Ubuntu setup:
 
 ```bash
 sudo apt update
 sudo apt install -y pulseaudio pulseaudio-utils
-```
-
-Install Node.js 22 and pnpm, then:
-
-```bash
 pnpm install
 pnpm exec playwright install chromium
 ```
 
-If Chromium reports missing system libraries, use Playwright's supported dependency installer on the Linux runner:
+If Chromium reports missing system libraries:
 
 ```bash
 pnpm exec playwright install-deps chromium
 ```
 
-Start PulseAudio if the host does not already expose a Pulse-compatible audio server:
+Verify audio:
 
 ```bash
 pulseaudio --start
 pactl info
 ```
 
-`pactl info` must succeed before starting the bot.
+`pactl info` must succeed before the runner starts.
 
 ## Environment
 
-Copy `.env.example` and configure at minimum:
+Minimum application/runner configuration:
 
 ```env
 DATABASE_URL=...
@@ -72,13 +107,12 @@ NEXTAUTH_URL=https://your-meeting-app.example.com
 MEETING_BOT_BASE_URL=https://your-meeting-app.example.com
 MEETING_BOT_RUNNER_TOKEN=...
 MEETING_BOT_TEAMS_DISPLAY_NAME=Meeting STT Assistant
+MEETING_BOT_SCHEDULE_POLL_MS=15000
 ```
 
-`MEETING_BOT_BASE_URL` must be reachable from the Linux runner.
+`MEETING_BOT_BASE_URL` must be reachable from the Linux runner. The runner and web application must use the same `NEXTAUTH_SECRET`.
 
-The bot recorder creates its authenticated application session using `NEXTAUTH_SECRET`, so the runner and web app must use the same secret.
-
-Do not expose `MEETING_BOT_RUNNER_TOKEN` in the browser or commit it to Git.
+Do not expose `MEETING_BOT_RUNNER_TOKEN` in browser code or commit real credentials.
 
 ## Run
 
@@ -95,41 +129,36 @@ Bot runner in a separate process:
 pnpm meeting:bot
 ```
 
-For initial debugging keep:
+For initial troubleshooting, `MEETING_BOT_HEADLESS=false` makes it easier to inspect the Teams browser. Production environments without a display normally need headless mode or an appropriate virtual display setup.
 
-```env
-MEETING_BOT_HEADLESS=false
-```
+## End-to-end acceptance test
 
-Once the Teams selectors and audio path are proven on the target host, headless mode can be tested separately.
+1. Create a short Teams meeting.
+2. Start the web app and Linux runner.
+3. Open `/meeting/bot`.
+4. Paste the Teams invitation.
+5. Confirm the detected title/time, or set them manually.
+6. Choose **Never** and save a meeting a few minutes in the future.
+7. Confirm the schedule appears with **Auto join ON**.
+8. Near the start time, confirm it appears under Bot activity as Joining/Waiting.
+9. Admit `Meeting STT Assistant` from the lobby if Teams requires it.
+10. Speak for at least 30-60 seconds.
+11. End the Teams meeting.
+12. Confirm the bot session finishes and the generated Meeting reaches its normal processed result.
+13. Repeat once with **Every week**, confirm the first occurrence runs, and confirm the schedule advances to the next week's date instead of creating duplicate sessions.
 
-## End-to-end test without admin approval
+Also verify:
 
-1. Create a short Microsoft Teams meeting that permits the browser participant to join.
-2. Start the Meeting web app.
-3. Start `pnpm meeting:bot` on Linux.
-4. Open `/meeting/bot`.
-5. Paste the Teams URL.
-6. Click **In 2 min**.
-7. Click **Schedule test**.
-8. Verify the row shows a scheduled time and remains in Starting until the claim window.
-9. Around one minute before the selected time, verify it changes to Joining.
-10. Admit `Meeting STT Assistant` if the meeting policy puts guests in the lobby.
-11. Speak for at least 30-60 seconds.
-12. End the Teams meeting.
-13. Verify the bot session becomes Finished.
-14. Open the generated Meeting recording and verify audio/transcript/processing output.
+- Pause prevents future dispatch.
+- Enable recalculates the next occurrence.
+- Edit changes link/time/repeat.
+- Delete removes the schedule.
+- Stop bot ends an active occurrence cleanly.
+- A runner restart does not duplicate an already-dispatched occurrence.
 
-Repeat with:
+## Microsoft Graph is optional
 
-- manually pressing Stop bot
-- leaving the bot alone for the configured timeout
-- a second meeting to verify queue reuse
-- two simultaneous meetings if `MEETING_BOT_MAX_CONCURRENCY=2`
-
-## Microsoft Graph calendar discovery
-
-Calendar discovery is disabled unless all four values are present:
+The existing Microsoft Graph calendar discovery can remain disabled by leaving these values blank:
 
 ```env
 MEETING_BOT_GRAPH_TENANT_ID=
@@ -138,30 +167,12 @@ MEETING_BOT_GRAPH_CLIENT_SECRET=
 MEETING_BOT_GRAPH_USER_ID=
 ```
 
-The runner uses OAuth 2.0 client credentials and calls the configured user's `calendarView` for the window from five minutes ago through the next 24 hours. Events with a Teams join URL are inserted as `CALENDAR` bot sessions.
+Graph can be added later if automatic Outlook calendar synchronization becomes useful. It is not required for the internal scheduler.
 
-Before production rollout, ask the Microsoft 365 administrator for a dedicated single-tenant Entra application and the smallest approved application-level calendar permission that returns the fields required by this implementation. Restrict access to the intended mailbox(es) using the organization's Exchange/Graph application access controls where available.
+## Teams custom app is a separate future layer
 
-Do not request Teams calling/media permissions for this browser-bot implementation; they are not used by the current source.
-
-## Acceptance checklist before asking IT to publish anything
-
-The bot is ready for the admin-integration phase when all of these pass:
-
-- [ ] CI passes: Prisma validation, tests, TypeScript and Next.js build.
-- [ ] Linux runner starts with `pactl info` healthy.
-- [ ] Immediate manual bot request joins a test meeting.
-- [ ] Scheduled test remains queued and joins at the expected time.
-- [ ] Lobby state is shown correctly.
-- [ ] Audio is captured into the Meeting recorder.
-- [ ] A normal meeting end triggers finalize and Finished.
-- [ ] Stop bot ends capture cleanly.
-- [ ] Alone timeout causes the bot to leave.
-- [ ] Generated meeting reaches READY or a clear FAILED state rather than remaining stuck.
-- [ ] No production secrets are committed.
-
-After this checklist passes, the remaining admin request is narrow: create/approve the Entra application for calendar discovery and authorize the required mailbox scope.
+A Teams custom app is also not required for this V1. It can later provide a wider Teams-native experience such as tabs, side panels, bot/chat interactions and notifications while reusing this same Meeting backend.
 
 ## Known operational limitation
 
-The current bot joins Teams Web as a guest/browser participant. Tenant meeting policies can require lobby admission or can block anonymous participants entirely. Those policies cannot be bypassed by this repository and must be handled through an approved Microsoft 365 configuration or by changing the bot architecture.
+The current bot joins Teams Web as a browser participant. Tenant meeting policies can place it in the lobby or block anonymous participants. The intended V1 behavior is that a human participant admits the bot when prompted.
