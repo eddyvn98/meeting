@@ -67,6 +67,10 @@ export async function POST(req: NextRequest) {
       const conflict = await tx.meetingBotSession.findFirst({
         where: {
           meetingUrl: schedule.meetingUrl,
+          NOT: {
+            source: "SCHEDULE",
+            sourceKey: { startsWith: `${schedule.id}:` },
+          },
           scheduledAt: {
             gte: new Date(occurrence.getTime() - 10 * 60_000),
             lte: new Date(occurrence.getTime() + 10 * 60_000),
