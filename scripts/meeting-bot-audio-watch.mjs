@@ -44,11 +44,7 @@ export async function maybeRecoverSilentAudio({
     sink.sinkName,
     storageState,
   );
-  if (!recovered) {
-    const error = new Error("Teams audio route recovery stopped before rejoining.");
-    error.code = "TEAMS_RECOVERY_FAILED";
-    throw error;
-  }
+  if (!recovered) return { teamsRuntime: null, lastRecoveryAt: now };
   await recorderRuntime.resume(recorder);
 
   return { teamsRuntime: recovered, lastRecoveryAt: now };
