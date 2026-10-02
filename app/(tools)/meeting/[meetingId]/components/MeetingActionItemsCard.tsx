@@ -66,7 +66,20 @@ export function MeetingActionItemsCard({ items, title = "Action Items", edit }: 
 		<div className="group/card flex flex-col rounded-xl border border-border bg-card p-4">
 			<SectionCardHeader icon={<CheckSquare className="h-4 w-4 shrink-0 text-primary" />} title={title} edit={edit} />
 
-			<CollapsibleSectionBody title={title}>
+			<CollapsibleSectionBody
+				title={title}
+				footer={
+					edit ? (
+						<AddItemButton
+							onClick={() => {
+								const item = blankItemFor("actions") as ActionSectionItem;
+								setFocusId(item.id);
+								edit.onItemsChange([...items, item]);
+							}}
+						/>
+					) : undefined
+				}
+			>
 				{edit && items.length > 0 ? (
 					<ul className="flex flex-col gap-3">
 						{items.map((item) => (
@@ -89,16 +102,6 @@ export function MeetingActionItemsCard({ items, title = "Action Items", edit }: 
 					</ul>
 				)}
 			</CollapsibleSectionBody>
-
-			{edit && (
-				<AddItemButton
-					onClick={() => {
-						const item = blankItemFor("actions") as ActionSectionItem;
-						setFocusId(item.id);
-						edit.onItemsChange([...items, item]);
-					}}
-				/>
-			)}
 		</div>
 	);
 }

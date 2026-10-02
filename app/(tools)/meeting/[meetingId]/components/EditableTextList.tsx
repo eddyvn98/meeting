@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { TextSectionItem } from "@/lib/meeting/overviewSections";
 import { InlineText } from "./InlineText";
 
@@ -19,15 +19,21 @@ export function EditableTextList({
   listClassName,
   emptyLabel,
   placeholder = "New item…",
+  addRequestKey = 0,
 }: {
   items: TextSectionItem[];
   onChange: (items: TextSectionItem[]) => void;
   listClassName: string;
   emptyLabel: string;
   placeholder?: string;
+  addRequestKey?: number;
 }) {
   // Id of the item the not-yet-saved new bullet goes after; "" = at the start.
   const [pendingAfter, setPendingAfter] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (addRequestKey > 0) setPendingAfter(items.at(-1)?.id ?? "");
+  }, [addRequestKey]);
 
   const setText = (id: string, text: string) =>
     onChange(text.trim() === "" ? items.filter((i) => i.id !== id) : items.map((i) => (i.id === id ? { ...i, text } : i)));

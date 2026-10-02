@@ -25,7 +25,20 @@ export function MeetingQaCard({ title, items, edit }: { title: string; items: Qa
 	return (
 		<div className="group/card flex flex-col rounded-xl border border-border bg-card p-4">
 			<SectionCardHeader icon={<HelpCircle className="h-4 w-4 shrink-0 text-primary" />} title={title} edit={edit} />
-			<CollapsibleSectionBody title={title}>
+			<CollapsibleSectionBody
+				title={title}
+				footer={
+					edit ? (
+						<AddItemButton
+							onClick={() => {
+								const item = blankItemFor("qa") as QaSectionItem;
+								setFocusId(item.id);
+								edit.onItemsChange([...items, item]);
+							}}
+						/>
+					) : undefined
+				}
+			>
 				{items.length === 0 ? (
 					<p className="py-4 text-sm text-muted-foreground">Nothing here yet.</p>
 				) : (
@@ -57,15 +70,6 @@ export function MeetingQaCard({ title, items, edit }: { title: string; items: Qa
 					</ul>
 				)}
 			</CollapsibleSectionBody>
-			{edit && (
-				<AddItemButton
-					onClick={() => {
-						const item = blankItemFor("qa") as QaSectionItem;
-						setFocusId(item.id);
-						edit.onItemsChange([...items, item]);
-					}}
-				/>
-			)}
 		</div>
 	);
 }
@@ -80,7 +84,20 @@ export function MeetingOptionsCompareCard({ title, items, edit }: { title: strin
 	return (
 		<div className="group/card flex flex-col rounded-xl border border-border bg-card p-4">
 			<SectionCardHeader icon={<Scale className="h-4 w-4 shrink-0 text-primary" />} title={title} edit={edit} />
-			<CollapsibleSectionBody title={title}>
+			<CollapsibleSectionBody
+				title={title}
+				footer={
+					edit ? (
+						<AddItemButton
+							onClick={() => {
+								const item = blankItemFor("options_compare") as OptionsCompareSectionItem;
+								setFocusId(item.id);
+								edit.onItemsChange([...items, item]);
+							}}
+						/>
+					) : undefined
+				}
+			>
 				{items.length === 0 ? (
 					<p className="py-4 text-sm text-muted-foreground">Nothing here yet.</p>
 				) : (
@@ -116,15 +133,6 @@ export function MeetingOptionsCompareCard({ title, items, edit }: { title: strin
 					</ul>
 				)}
 			</CollapsibleSectionBody>
-			{edit && (
-				<AddItemButton
-					onClick={() => {
-						const item = blankItemFor("options_compare") as OptionsCompareSectionItem;
-						setFocusId(item.id);
-						edit.onItemsChange([...items, item]);
-					}}
-				/>
-			)}
 		</div>
 	);
 }
@@ -138,7 +146,20 @@ export function MeetingMetricsCard({ title, items, edit }: { title: string; item
 	return (
 		<div className="group/card flex flex-col rounded-xl border border-border bg-card p-4">
 			<SectionCardHeader icon={<Gauge className="h-4 w-4 shrink-0 text-primary" />} title={title} edit={edit} />
-			<CollapsibleSectionBody title={title}>
+			<CollapsibleSectionBody
+				title={title}
+				footer={
+					edit ? (
+						<AddItemButton
+							onClick={() => {
+								const item = blankItemFor("metrics") as MetricSectionItem;
+								setFocusId(item.id);
+								edit.onItemsChange([...items, item]);
+							}}
+						/>
+					) : undefined
+				}
+			>
 				{items.length === 0 ? (
 					<p className="py-4 text-sm text-muted-foreground">Nothing here yet.</p>
 				) : (
@@ -170,15 +191,6 @@ export function MeetingMetricsCard({ title, items, edit }: { title: string; item
 					</dl>
 				)}
 			</CollapsibleSectionBody>
-			{edit && (
-				<AddItemButton
-					onClick={() => {
-						const item = blankItemFor("metrics") as MetricSectionItem;
-						setFocusId(item.id);
-						edit.onItemsChange([...items, item]);
-					}}
-				/>
-			)}
 		</div>
 	);
 }
