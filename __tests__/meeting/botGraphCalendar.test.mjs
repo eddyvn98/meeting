@@ -76,6 +76,29 @@ describe("Microsoft Graph bot mailbox helpers", () => {
 });
 
 describe("Microsoft Graph calendar snapshot", () => {
+  it("retries a transient Graph network failure", async () => {
+    let graphAttempts = 0;
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes("login.microsoftonline.com")) {
+        return new Response(JSON.stringify({ access_token: "token", expires_in: 3600 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      graphAttempts += 1;
+      if (graphAttempts === 1) throw new Error("temporary network failure");
+      return new Response(JSON.stringify({ value: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const client = createGraphCalendarClient({ env, fetchImpl });
+    const snapshot = await client.fetchSnapshot(Date.parse("2026-10-05T02:30:00Z"));
+    expect(snapshot.events).toEqual([]);
+    expect(graphAttempts).toBe(2);
+  });
+
   it("follows pagination and requests bot-invite fields", async () => {
     const calls = [];
     const event = (id, title) => ({

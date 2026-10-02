@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseTeamsInvitation } from "@/lib/meeting/bot/invitation";
+import { normalizeTeamsMeetingUrl } from "@/lib/meeting/bot/teamsUrl";
 import { nextMeetingScheduleAtOrAfter, nextMeetingScheduleRun } from "@/lib/meeting/bot/recurrence";
 
 describe("Teams invitation parsing", () => {
@@ -42,6 +43,18 @@ https://teams.microsoft.com/l/meetup-join/abc
     const parsed = parseTeamsInvitation("https://teams.microsoft.com/l/meetup-join/abc");
     expect(parsed.meetingUrl).toContain("teams.microsoft.com");
     expect(parsed.startLocal).toBeNull();
+  });
+});
+
+describe("Teams URL normalization", () => {
+  it("sorts query parameters so equivalent join links deduplicate", () => {
+    const a = normalizeTeamsMeetingUrl(
+      "https://teams.microsoft.com/l/meetup-join/abc?z=2&a=1#fragment",
+    );
+    const b = normalizeTeamsMeetingUrl(
+      "https://teams.microsoft.com/l/meetup-join/abc?a=1&z=2",
+    );
+    expect(a).toBe(b);
   });
 });
 

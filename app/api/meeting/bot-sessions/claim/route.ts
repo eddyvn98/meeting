@@ -9,8 +9,11 @@ export const runtime = "nodejs";
 
 const REQUEUEABLE_STATUSES: MeetingBotStatus[] = ["CLAIMED", "JOINING", "LOBBY", "JOINED"];
 const DEFAULT_LEASE_TIMEOUT_MS = 120_000;
+const DEFAULT_CAPTURE_LEASE_TIMEOUT_MS = 5 * 60_000;
 const DEFAULT_START_GRACE_MS = 60_000;
+const DEFAULT_MAX_CONTINUATIONS = 2;
 const DEFAULT_SCHEDULE_LATE_GRACE_MS = 10 * 60_000;
+const DEFAULT_CALENDAR_LATE_GRACE_MS = 10 * 60_000;
 // A Meeting left in PROCESSING for longer than this (measured from its
 // updatedAt, which finalize/route.ts always bumps when it flips the status)
 // never got a terminal signal from either the local-STT processing effect
@@ -30,9 +33,15 @@ export async function POST(req: NextRequest) {
 
   const now = new Date();
   const staleBefore = new Date(now.getTime() - envDuration("MEETING_BOT_LEASE_TIMEOUT_MS", DEFAULT_LEASE_TIMEOUT_MS));
+  const staleCaptureBefore = new Date(
+    now.getTime() - envDuration("MEETING_BOT_CAPTURE_LEASE_TIMEOUT_MS", DEFAULT_CAPTURE_LEASE_TIMEOUT_MS),
+  );
   const claimBefore = new Date(now.getTime() + envDuration("MEETING_BOT_START_GRACE_MS", DEFAULT_START_GRACE_MS));
   const scheduleLateBefore = new Date(
     now.getTime() - envDuration("MEETING_BOT_SCHEDULE_LATE_GRACE_MS", DEFAULT_SCHEDULE_LATE_GRACE_MS),
+  );
+  const calendarLateBefore = new Date(
+    now.getTime() - envDuration("MEETING_BOT_CALENDAR_LATE_GRACE_MS", DEFAULT_CALENDAR_LATE_GRACE_MS),
   );
 
   await prisma.meetingBotSession.updateMany({
@@ -49,6 +58,19 @@ export async function POST(req: NextRequest) {
   });
 
   await prisma.meetingBotSession.updateMany({
+    where: {
+      source: "CALENDAR",
+      status: "REQUESTED",
+      scheduledAt: { not: null, lt: calendarLateBefore },
+    },
+    data: {
+      status: "FAILED",
+      endedAt: now,
+      errorMessage: "The calendar meeting start was missed while the bot was unavailable.",
+    },
+  });
+
+  await prisma.meetingBotSession.updateMany({
     where: { status: { in: REQUEUEABLE_STATUSES }, lastHeartbeatAt: { not: null, lt: staleBefore } },
     data: {
       status: "REQUESTED",
@@ -61,21 +83,60 @@ export async function POST(req: NextRequest) {
   });
 
   const staleCaptureSessions = await prisma.meetingBotSession.findMany({
-    where: { status: "CAPTURING", lastHeartbeatAt: { not: null, lt: staleBefore } },
-    select: { id: true, meetingId: true },
+    where: { status: "CAPTURING", lastHeartbeatAt: { not: null, lt: staleCaptureBefore } },
+    select: {
+      id: true,
+      meetingId: true,
+      ownerEmail: true,
+      meetingUrl: true,
+      title: true,
+      source: true,
+      sourceKey: true,
+    },
   });
   if (staleCaptureSessions.length > 0) {
     await prisma.$transaction(async (tx) => {
       for (const session of staleCaptureSessions) {
         const failed = await tx.meetingBotSession.updateMany({
-          where: { id: session.id, status: "CAPTURING", lastHeartbeatAt: { not: null, lt: staleBefore } },
+          where: { id: session.id, status: "CAPTURING", lastHeartbeatAt: { not: null, lt: staleCaptureBefore } },
           data: { status: "FAILED", runnerId: null, endedAt: now, errorMessage: "The runner heartbeat expired during capture." },
         });
-        if (failed.count === 1 && session.meetingId) {
-          await tx.meeting.updateMany({
-            where: { id: session.meetingId, status: "UPLOADING" },
-            data: { status: "FAILED", failureReason: "The meeting bot stopped reporting while recording." },
-          });
+        if (failed.count === 1) {
+          if (session.meetingId) {
+            await tx.meeting.updateMany({
+              where: { id: session.meetingId, status: "UPLOADING" },
+              data: { status: "FAILED", failureReason: "The meeting bot stopped reporting while recording." },
+            });
+          }
+
+          const maxContinuationsRaw = Number(process.env.MEETING_BOT_MAX_CONTINUATIONS);
+          const maxContinuations =
+            Number.isInteger(maxContinuationsRaw) && maxContinuationsRaw >= 0
+              ? maxContinuationsRaw
+              : DEFAULT_MAX_CONTINUATIONS;
+          const depth = (session.sourceKey?.match(/:continuation:/g) ?? []).length;
+          if (depth < maxContinuations) {
+            const baseKey = session.sourceKey ?? session.id;
+            const continuationKey = `${baseKey}:continuation:${session.id}`;
+            await tx.meetingBotSession.upsert({
+              where: {
+                source_sourceKey: {
+                  source: session.source,
+                  sourceKey: continuationKey,
+                },
+              },
+              update: {},
+              create: {
+                ownerEmail: session.ownerEmail,
+                meetingUrl: session.meetingUrl,
+                title: session.title,
+                source: session.source,
+                sourceKey: continuationKey,
+                scheduledAt: null,
+                errorMessage: "Automatic continuation after the previous runner stopped during capture.",
+              },
+            });
+          }
         }
       }
     });

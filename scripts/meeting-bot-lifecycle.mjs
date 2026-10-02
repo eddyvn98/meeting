@@ -11,6 +11,50 @@
 
 const MINUTE_MS = 60_000;
 
+export const TEAMS_PAGE_STATES = [
+  "LOBBY",
+  "REJECTED",
+  "REMOVED",
+  "MEETING_ENDED",
+  "RECONNECTING",
+  "LEFT",
+  "ACCESS_DENIED",
+  "INVALID_LINK",
+];
+
+/**
+ * Best-effort classification of Teams Web status text. Keep this pure so
+ * wording changes can be covered by tests without launching Chromium.
+ */
+export function detectTeamsPageState(text) {
+  if (typeof text !== "string" || !text.trim()) return null;
+  if (
+    /you (?:weren't|were not) admitted|request (?:to join )?(?:was )?declined|your request to join was declined|admission (?:was )?denied|someone declined your request|không được chấp nhận|từ chối.*tham gia/i.test(text)
+  ) return "REJECTED";
+  if (
+    /you were removed|removed from the meeting|you've been removed|someone removed you|organizer removed you|bạn đã bị (?:xóa|loại).*cuộc họp|đã loại bạn khỏi cuộc họp/i.test(text)
+  ) return "REMOVED";
+  if (
+    /meeting has ended|the meeting ended|this meeting is over|call ended|organizer ended the meeting|cuộc họp đã kết thúc|cuộc gọi đã kết thúc/i.test(text)
+  ) return "MEETING_ENDED";
+  if (
+    /invalid meeting link|meeting link (?:is )?invalid|meeting doesn't exist|meeting does not exist|link has expired|liên kết.*không hợp lệ|cuộc họp không tồn tại/i.test(text)
+  ) return "INVALID_LINK";
+  if (
+    /sign in to join|you don't have access|you do not have access|only people with access|anonymous.*(?:not allowed|disabled)|guest.*(?:not allowed|disabled)|không có quyền truy cập|cần đăng nhập.*tham gia/i.test(text)
+  ) return "ACCESS_DENIED";
+  if (
+    /you've left the meeting|you left the meeting|bạn đã rời khỏi cuộc họp|bạn đã rời cuộc họp/i.test(text)
+  ) return "LEFT";
+  if (
+    /reconnecting|trying to reconnect|connection (?:was )?lost|you were disconnected|network problem|poor network|đang kết nối lại|mất kết nối|sự cố mạng/i.test(text)
+  ) return "RECONNECTING";
+  if (
+    /waiting in the lobby|let you in|waiting for someone|organizer hasn't started|organizer has not started|sẽ có người cho bạn vào|đang chờ.*sảnh|đang ở sảnh chờ|người tổ chức.*chưa bắt đầu/i.test(text)
+  ) return "LOBBY";
+  return null;
+}
+
 /**
  * How long the runner should keep the STT/recorder browser open, polling
  * for the meeting to reach READY/FAILED, before giving up and forcing a
@@ -72,6 +116,10 @@ export function parseParticipantCount(text) {
     /participants\s*\((\d+)\)/i,
     /(\d+)\s+people\b/i,
     /(\d+)\s+participants\b/i,
+    /người\s*\((\d+)\)/i,
+    /người tham gia\s*\((\d+)\)/i,
+    /(\d+)\s+người\b/i,
+    /(\d+)\s+người tham gia\b/i,
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);

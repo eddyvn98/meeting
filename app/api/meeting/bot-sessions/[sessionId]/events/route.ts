@@ -25,6 +25,9 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
   if (session.runnerId !== runnerId(req)) {
     return NextResponse.json({ error: "Session is owned by another runner." }, { status: 409 });
   }
+  if (["ENDED", "FAILED"].includes(session.status)) {
+    return NextResponse.json(serializeMeetingBotSession(session));
+  }
   if (session.status === "STOP_REQUESTED" && !["STOP_REQUESTED", "ENDED", "FAILED"].includes(body.status)) {
     return NextResponse.json(serializeMeetingBotSession(session));
   }
@@ -46,7 +49,14 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
         status,
         runnerId: session.runnerId ?? runnerId(req),
         meetingId: meetingId ?? undefined,
-        errorMessage: typeof body.errorMessage === "string" ? body.errorMessage.slice(0, 4000) : status === "FAILED" ? failureReason : null,
+        errorMessage:
+          typeof body.errorMessage === "string"
+            ? body.errorMessage.slice(0, 4000)
+            : status === "FAILED"
+              ? failureReason
+              : ["STOP_REQUESTED", "ENDED"].includes(status)
+                ? session.errorMessage
+                : null,
         lastHeartbeatAt: new Date(),
         startedAt: ["JOINING", "LOBBY", "JOINED", "CAPTURING"].includes(status) ? session.startedAt ?? new Date() : undefined,
         endedAt: ["ENDED", "FAILED"].includes(status) ? new Date() : undefined,

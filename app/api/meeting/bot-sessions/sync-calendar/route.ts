@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isBotRunnerRequest } from "../_auth";
 import { cleanMeetingTitle, normalizeTeamsMeetingUrl } from "@/lib/meeting/bot/teamsUrl";
+import {
+  botSourceOccurrenceAt,
+  rootBotSourceKey,
+  sameBotOccurrence,
+} from "@/lib/meeting/bot/sessionKeys";
 
 export const runtime = "nodejs";
 
@@ -79,6 +84,7 @@ export async function POST(req: NextRequest) {
 
   const prefix = `graph:${mailboxKey}:`;
   const seen = new Set<string>();
+  const seenEventPrefixes = new Set<string>();
   const stats = {
     created: 0,
     updated: 0,
@@ -119,7 +125,9 @@ export async function POST(req: NextRequest) {
     }
 
     const key = sourceKey(mailboxKey, eventId, scheduledAt);
+    const eventPrefix = `${prefix}${eventId}:`;
     seen.add(key);
+    seenEventPrefixes.add(eventPrefix);
 
     const meetingUrl = normalizeTeamsMeetingUrl(item.meetingUrl);
     const ownerEmail = canonicalEmail(item.ownerEmail);
@@ -136,58 +144,143 @@ export async function POST(req: NextRequest) {
     if (!organizerAllowed) stats.blockedOrganizer += 1;
     if (!invited) stats.notInvited += 1;
 
-    const existing = await prisma.meetingBotSession.findUnique({
-      where: { source_sourceKey: { source: "CALENDAR", sourceKey: key } },
-    });
-
     if (unavailable) {
-      if (!existing) {
+      const affected = await prisma.meetingBotSession.findMany({
+        where: {
+          source: "CALENDAR",
+          sourceKey: { startsWith: eventPrefix },
+          status: { in: ["REQUESTED", ...ACTIVE] },
+        },
+        select: { id: true, status: true },
+      });
+      if (affected.length === 0) {
         stats.ignored += 1;
-      } else if (existing.status === "REQUESTED") {
-        await prisma.meetingBotSession.delete({ where: { id: existing.id } });
-        stats.removed += 1;
-      } else if (ACTIVE.includes(existing.status as (typeof ACTIVE)[number])) {
-        await prisma.meetingBotSession.update({
-          where: { id: existing.id },
-          data: {
-            status: "STOP_REQUESTED",
-            lastHeartbeatAt: new Date(),
-            errorMessage: item.cancelled === true
-              ? "The Outlook calendar event was cancelled."
-              : item.declined === true
-                ? "The calendar invitation was declined."
-                : !organizerAllowed
-                ? "The meeting organizer is not allowed to invite the bot."
-                : !invited
-                  ? "The bot mailbox is not an attendee of this meeting."
-                  : "The calendar event no longer has a Teams join URL.",
-          },
-        });
-        stats.stopRequested += 1;
+      }
+      for (const session of affected) {
+        if (session.status === "REQUESTED") {
+          await prisma.meetingBotSession.delete({ where: { id: session.id } });
+          stats.removed += 1;
+        } else {
+          await prisma.meetingBotSession.update({
+            where: { id: session.id },
+            data: {
+              status: "STOP_REQUESTED",
+              lastHeartbeatAt: new Date(),
+              errorMessage: item.cancelled === true
+                ? "The Outlook calendar event was cancelled."
+                : item.declined === true
+                  ? "The calendar invitation was declined."
+                  : !organizerAllowed
+                    ? "The meeting organizer is not allowed to invite the bot."
+                    : !invited
+                      ? "The bot mailbox is not an attendee of this meeting."
+                      : "The calendar event no longer has a Teams join URL.",
+            },
+          });
+          stats.stopRequested += 1;
+        }
       }
       continue;
     }
 
-    await prisma.meetingBotSession.upsert({
-      where: { source_sourceKey: { source: "CALENDAR", sourceKey: key } },
-      update: {
-        ownerEmail,
-        meetingUrl,
-        title: cleanMeetingTitle(item.title),
-        scheduledAt,
-        ...(existing?.status === "REQUESTED" ? { errorMessage: null } : {}),
-      },
-      create: {
-        ownerEmail,
-        meetingUrl,
-        title: cleanMeetingTitle(item.title),
-        source: "CALENDAR",
-        sourceKey: key,
-        scheduledAt,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-bot:${meetingUrl}`}))`;
+
+      const current = await tx.meetingBotSession.findUnique({
+        where: { source_sourceKey: { source: "CALENDAR", sourceKey: key } },
+      });
+      if (current) {
+        await tx.meetingBotSession.update({
+          where: { id: current.id },
+          data: {
+            ownerEmail,
+            meetingUrl,
+            title: cleanMeetingTitle(item.title),
+            scheduledAt,
+            ...(current.status === "REQUESTED" ? { errorMessage: null } : {}),
+          },
+        });
+        stats.updated += 1;
+        return;
+      }
+
+      const superseded = await tx.meetingBotSession.findMany({
+        where: {
+          source: "CALENDAR",
+          sourceKey: { startsWith: eventPrefix },
+          status: { in: ["REQUESTED", ...ACTIVE] },
+        },
+        select: { id: true, status: true },
+      });
+      for (const prior of superseded) {
+        if (prior.status === "REQUESTED") {
+          await tx.meetingBotSession.delete({ where: { id: prior.id } });
+          stats.removed += 1;
+        } else {
+          await tx.meetingBotSession.update({
+            where: { id: prior.id },
+            data: {
+              status: "STOP_REQUESTED",
+              lastHeartbeatAt: new Date(),
+              errorMessage: "The Outlook calendar event was rescheduled.",
+            },
+          });
+          stats.stopRequested += 1;
+        }
+      }
+
+      const conflict = await tx.meetingBotSession.findFirst({
+        where: {
+          meetingUrl,
+          status: { not: "FAILED" },
+          NOT: {
+            source: "CALENDAR",
+            sourceKey: { startsWith: eventPrefix },
+          },
+          scheduledAt: {
+            gte: new Date(scheduledAt.getTime() - 10 * 60_000),
+            lte: new Date(scheduledAt.getTime() + 10 * 60_000),
+          },
+        },
+        orderBy: { requestedAt: "asc" },
+      });
+      let continuationConflict = null;
+      if (!conflict) {
+        const continuations = await tx.meetingBotSession.findMany({
+          where: {
+            meetingUrl,
+            status: { not: "FAILED" },
+            scheduledAt: null,
+            sourceKey: { contains: ":continuation:" },
+            NOT: {
+              source: "CALENDAR",
+              sourceKey: { startsWith: eventPrefix },
+            },
+          },
+          orderBy: { requestedAt: "desc" },
+          take: 50,
+        });
+        continuationConflict = continuations.find((session) =>
+          sameBotOccurrence(session.sourceKey, scheduledAt),
+        ) ?? null;
+      }
+      if (conflict || continuationConflict) {
+        stats.ignored += 1;
+        return;
+      }
+
+      await tx.meetingBotSession.create({
+        data: {
+          ownerEmail,
+          meetingUrl,
+          title: cleanMeetingTitle(item.title),
+          source: "CALENDAR",
+          sourceKey: key,
+          scheduledAt,
+        },
+      });
+      stats.created += 1;
     });
-    if (existing) stats.updated += 1;
-    else stats.created += 1;
   }
 
   const queued = await prisma.meetingBotSession.findMany({
@@ -195,13 +288,23 @@ export async function POST(req: NextRequest) {
       source: "CALENDAR",
       sourceKey: { startsWith: prefix },
       status: { in: ["REQUESTED", ...ACTIVE] },
-      scheduledAt: { gte: windowStart, lt: windowEnd },
     },
-    select: { id: true, sourceKey: true, status: true },
+    select: { id: true, sourceKey: true, status: true, scheduledAt: true },
   });
 
   for (const session of queued) {
-    if (!session.sourceKey || seen.has(session.sourceKey)) continue;
+    const rootKey = rootBotSourceKey(session.sourceKey);
+    if (!rootKey) continue;
+    if (seen.has(rootKey)) continue;
+
+    const occurrenceAt = session.scheduledAt ?? botSourceOccurrenceAt(session.sourceKey);
+    if (!occurrenceAt || occurrenceAt < windowStart || occurrenceAt >= windowEnd) continue;
+
+    const belongsToSeenEvent = [...seenEventPrefixes].some((eventPrefix) =>
+      rootKey.startsWith(eventPrefix),
+    );
+    if (belongsToSeenEvent) continue;
+
     if (session.status === "REQUESTED") {
       await prisma.meetingBotSession.delete({ where: { id: session.id } });
       stats.removed += 1;

@@ -10,6 +10,7 @@ export function normalizeTeamsMeetingUrl(value: unknown): string | null {
       return null;
     }
     url.hash = "";
+    url.searchParams.sort();
     return url.toString();
   } catch {
     return null;

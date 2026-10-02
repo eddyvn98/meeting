@@ -1,0 +1,204 @@
+import { chromium } from "@playwright/test";
+import { encode } from "next-auth/jwt";
+import { clickIfVisible, codedError } from "./meeting-bot-teams.mjs";
+
+export function createMeetingRecorderRuntime({
+  baseUrl,
+  sttAuthSecret,
+  teamsDisplayName,
+  browserChannel,
+  browserExecutable,
+  processingPollMs,
+  processingTimeoutMinMs,
+  processingTimeoutMaxMs,
+  processingTimeoutDefaultMs,
+  computeProcessingTimeoutMs,
+}) {
+  const isInsecureLocalBaseUrl = baseUrl.startsWith("http://");
+
+  async function authenticate(context, session) {
+    const now = Math.floor(Date.now() / 1000);
+    const email = process.env.MEETING_BOT_STT_EMAIL?.trim() || session.ownerEmail;
+    const token = await encode({
+      token: {
+        sub: `meeting-bot:${email}`,
+        email,
+        name: teamsDisplayName,
+        userId: `meeting-bot:${email}`,
+        displayName: teamsDisplayName,
+        isDevSession: true,
+        iat: now,
+        exp: now + 12 * 60 * 60,
+      },
+      secret: sttAuthSecret,
+    });
+    const secure = baseUrl.startsWith("https://");
+    await context.addCookies([{
+      name: secure ? "__Secure-next-auth.session-token" : "next-auth.session-token",
+      value: token,
+      url: baseUrl,
+      secure,
+      httpOnly: true,
+      sameSite: "Lax",
+    }]);
+  }
+
+  async function launch(session, sourceName, storageState) {
+    const browser = await chromium.launch({
+      ...(browserChannel ? { channel: browserChannel } : {}),
+      ...(browserExecutable ? { executablePath: browserExecutable } : {}),
+      headless: process.env.MEETING_BOT_HEADLESS === "true",
+      env: { ...process.env, PULSE_SOURCE: sourceName },
+      args: [
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--autoplay-policy=no-user-gesture-required",
+        "--disable-notifications",
+        ...(isInsecureLocalBaseUrl ? [
+          `--unsafely-treat-insecure-origin-as-secure=${baseUrl}`,
+          "--use-fake-ui-for-media-stream",
+        ] : []),
+      ],
+    });
+    const context = await browser.newContext({
+      storageState,
+      viewport: { width: 1440, height: 1000 },
+    });
+    await context.grantPermissions(["microphone"], { origin: baseUrl }).catch((error) => {
+      if (!isInsecureLocalBaseUrl) throw error;
+    });
+    await authenticate(context, session);
+
+    const page = await context.newPage();
+    let meetingId;
+    try {
+      await page.goto(
+        `${baseUrl}/meeting?title=${encodeURIComponent(session.title)}&capture=bot-audio`,
+        { waitUntil: "domcontentloaded", timeout: 60_000 },
+      );
+      await clickIfVisible(page, [/Skip preload \(continue now\)/i]);
+      const startButton = page.getByRole("button", { name: /Start Meeting/i }).last();
+      await startButton.waitFor({ state: "visible", timeout: 60_000 }).catch(() => undefined);
+      if (!(await startButton.isVisible().catch(() => false))) {
+        throw new Error("The Meeting page is not authenticated or the start control is unavailable.");
+      }
+
+      const responsePromise = page.waitForResponse(
+        (response) => response.url().endsWith("/api/meeting") && response.request().method() === "POST",
+        { timeout: 45_000 },
+      );
+      await startButton.click();
+      const data = await (await responsePromise).json();
+      if (typeof data.id !== "string") throw new Error("Meeting recorder did not return a meeting id.");
+      meetingId = data.id;
+      await page.waitForURL(/\/meeting\/record/, { timeout: 30_000 });
+      return { browser, context, page, meetingId };
+    } catch (error) {
+      await page.close().catch(() => undefined);
+      await context.close().catch(() => undefined);
+      await browser.close().catch(() => undefined);
+      if (meetingId && error && typeof error === "object") error.meetingId = meetingId;
+      throw error;
+    }
+  }
+
+  function isAlive(recorder) {
+    return Boolean(
+      recorder &&
+      !recorder.page.isClosed() &&
+      recorder.browser.isConnected(),
+    );
+  }
+
+  async function pause(recorder) {
+    if (!isAlive(recorder)) throw codedError("RECORDER_CRASHED", "Recorder browser is not available.");
+    const paused = await clickIfVisible(recorder.page, [/Pause recording/i]);
+    if (!paused) {
+      const label = await recorder.page.locator("body").innerText().catch(() => "");
+      if (!/Paused/i.test(label)) throw codedError("RECORDER_CONTROL_FAILED", "Recorder could not be paused.");
+    }
+  }
+
+  async function resume(recorder) {
+    if (!isAlive(recorder)) throw codedError("RECORDER_CRASHED", "Recorder browser is not available.");
+    const resumed = await clickIfVisible(recorder.page, [/Resume recording/i]);
+    if (!resumed) {
+      const label = await recorder.page.locator("body").innerText().catch(() => "");
+      if (/Paused/i.test(label)) throw codedError("RECORDER_CONTROL_FAILED", "Recorder could not be resumed.");
+    }
+  }
+
+  async function audioHealth(recorder) {
+    if (!isAlive(recorder)) throw codedError("RECORDER_CRASHED", "Recorder browser is not available.");
+    return recorder.page.evaluate(() => {
+      const value = window.__meetingBotAudioHealth;
+      return value ? { ...value } : null;
+    }).catch(() => null);
+  }
+
+  async function finish(recorder) {
+    if (!isAlive(recorder)) throw codedError("RECORDER_CRASHED", "Recorder browser closed before finalization.");
+    const endButton = recorder.page.getByRole("button", { name: /End Meeting/i }).first();
+    if (!(await endButton.isVisible().catch(() => false))) {
+      throw new Error("The recorder end control is unavailable.");
+    }
+    const finalizeResponse = recorder.page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        /\/api\/meeting\/[^/]+\/finalize$/.test(new URL(response.url()).pathname),
+      { timeout: 120_000 },
+    );
+    await endButton.click();
+    const response = await finalizeResponse;
+    if (!response.ok()) throw new Error(`Recorder finalization failed (${response.status()}).`);
+  }
+
+  async function waitForProcessing(recorder, session, heartbeat, recordedMs) {
+    const timeoutMs = computeProcessingTimeoutMs({
+      recordedMs,
+      minMs: processingTimeoutMinMs,
+      maxMs: processingTimeoutMaxMs,
+      defaultMs: processingTimeoutDefaultMs,
+    });
+    const deadline = Date.now() + timeoutMs;
+    const requestContext = recorder.page.context().request;
+    const meetingUrl = `${baseUrl}/api/meeting/${encodeURIComponent(recorder.meetingId)}`;
+
+    while (Date.now() < deadline) {
+      await heartbeat.update("STOP_REQUESTED", { meetingId: recorder.meetingId }).catch(() => undefined);
+      try {
+        const response = await requestContext.get(meetingUrl);
+        if (response.ok()) {
+          const data = await response.json();
+          if (data?.status === "READY" || data?.status === "FAILED") return false;
+        }
+      } catch {
+        // Keep polling through temporary app/network interruptions.
+      }
+      await new Promise((resolve) => setTimeout(resolve, processingPollMs));
+    }
+
+    console.log(
+      `[meeting-bot] session ${session.id} processing timed out after ${timeoutMs}ms; forcing mock-complete.`,
+    );
+    await requestContext.post(`${meetingUrl}/mock-complete`).catch(() => undefined);
+    return true;
+  }
+
+  async function dispose(recorder) {
+    await recorder?.page.close().catch(() => undefined);
+    await recorder?.context.close().catch(() => undefined);
+    await recorder?.browser.close().catch(() => undefined);
+  }
+
+  return {
+    launch,
+    isAlive,
+    pause,
+    resume,
+    audioHealth,
+    finish,
+    waitForProcessing,
+    dispose,
+  };
+}

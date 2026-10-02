@@ -8,6 +8,7 @@
  */
 
 import type { CaptureError, CaptureSource } from "./types";
+import { startBotAudioHealthMonitor, stopBotAudioHealthMonitor } from "./botAudioHealth";
 export type { CaptureSource } from "./types";
 export interface CaptureResult {
   stream: MediaStream;
@@ -215,7 +216,10 @@ export async function startCapture(source: CaptureSource = "display"): Promise<C
     if (!("getAudioTracks" in botAudio)) return fail(botAudio.reason, botAudio.message);
     wakeUpTrack(botAudio);
     const result = await createCaptureResult([botAudio]);
-    if (!result.error) console.info("[meeting] bot audio track is live; initial silence is allowed");
+    if (!result.error) {
+      await startBotAudioHealthMonitor(result.stream);
+      console.info("[meeting] bot audio track is live; signal health monitoring started");
+    }
     return result;
   }
   if (source === "microphone") {
@@ -242,6 +246,7 @@ export async function startCapture(source: CaptureSource = "display"): Promise<C
 }
 
 export function stopCapture(rawStreams: MediaStream[], audioCtx?: AudioContext | null): void {
+  stopBotAudioHealthMonitor();
   stopAll(rawStreams);
   stopWakeElements();
   if (audioCtx && audioCtx.state !== "closed") void audioCtx.close().catch(() => {});
