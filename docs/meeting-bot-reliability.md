@@ -39,7 +39,8 @@ Any unrecoverable infrastructure failure may end at FAILED.
 | App/API temporarily unavailable | Runner claim loop retries instead of exiting; heartbeat calls are best-effort. |
 | Graph outage causes an old occurrence to arrive late | CALENDAR late-grace marks it missed instead of joining much later. |
 | Web schedule and Graph describe the same occurrence | URL/time dedupe and advisory lock allow one bot session. |
-| Bot is alone | Continuous alone timeout ends the session. |
+| Bot joins before everyone else | Initial-alone grace keeps it waiting for a late start. |
+| Bot is alone after people have joined | Continuous alone timeout ends the session. |
 | Vietnamese Teams roster text | Participant count parser handles common Vietnamese forms. |
 | Audio track exists but is silent | Browser RMS health monitor detects prolonged silence. |
 | Silent audio while >1 participant is present | Teams audio route is reconnected once per recovery cooldown. |
@@ -55,6 +56,7 @@ MEETING_BOT_REJOIN_WINDOW_MS=120000
 MEETING_BOT_REJOIN_ATTEMPT_MS=30000
 MEETING_BOT_MAX_CONTINUATIONS=2
 MEETING_BOT_CAPTURE_LEASE_TIMEOUT_MS=300000
+MEETING_BOT_INITIAL_ALONE_GRACE_MS=900000
 
 MEETING_BOT_AUDIO_INITIAL_SIGNAL_MS=60000
 MEETING_BOT_AUDIO_SILENCE_MS=180000
