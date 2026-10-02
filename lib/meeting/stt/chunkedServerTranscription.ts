@@ -49,11 +49,13 @@ export async function runChunkedServerTranscription(
    *  progress / reset a stall-detection timeout instead of one opaque wait
    *  for the whole meeting. */
   onChunkComplete?: (chunkIndex: number, chunkCount: number) => void,
+  options: { textOnly?: boolean } = {},
 ): Promise<{ segments: STTSegment[]; spans: DiarizationSpan[]; centroids: SpeakerCentroid[] }> {
   const chunkSamples = CHUNK_DURATION_SEC * sampleRate;
   const chunkCount = Math.max(1, Math.ceil(audio.length / chunkSamples));
 
   let final: ChunkResponseBody = {};
+  const textOnlySegments: STTSegment[] = [];
   for (let i = 0; i < chunkCount; i++) {
     const start = i * chunkSamples;
     const slice = audio.subarray(start, Math.min(start + chunkSamples, audio.length));
@@ -69,6 +71,7 @@ export async function runChunkedServerTranscription(
           "x-sample-rate": String(sampleRate),
           "x-chunk-offset-sec": String(offsetSec),
           "x-chunk-last": isLast ? "true" : "false",
+          ...(options.textOnly ? { "x-text-only": "true" } : {}),
         },
         // Raw 16-bit PCM per slice, not JSON — same rationale as
         // serverProvider.ts's postAudioForTranscription.
@@ -84,8 +87,20 @@ export async function runChunkedServerTranscription(
         `Chunked transcribe request failed (chunk ${i + 1}/${chunkCount}): ${res.status} ${res.statusText}`,
       );
     }
-    if (isLast) final = (await res.json()) as ChunkResponseBody;
+    if (options.textOnly) {
+      const data = (await res.json()) as ChunkResponseBody;
+      textOnlySegments.push(
+        ...(data.segments ?? []).map((s) => ({ start: s.start, end: s.end, text: s.text })),
+      );
+    } else if (isLast) {
+      final = (await res.json()) as ChunkResponseBody;
+    }
     onChunkComplete?.(i + 1, chunkCount);
+  }
+
+  if (options.textOnly) {
+    textOnlySegments.sort((a, b) => a.start - b.start);
+    return { segments: textOnlySegments, spans: [], centroids: [] };
   }
 
   return {
