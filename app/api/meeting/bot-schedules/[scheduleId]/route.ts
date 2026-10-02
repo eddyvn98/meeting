@@ -33,6 +33,7 @@ export async function PATCH(
     startAt?: unknown;
     repeat?: unknown;
     enabled?: unknown;
+    timezoneOffsetMin?: unknown;
   };
   try {
     body = await req.json();
@@ -62,6 +63,17 @@ export async function PATCH(
       ? body.repeat
       : schedule.repeat;
   const nextEnabled = body.enabled === undefined ? schedule.enabled : body.enabled === true;
+  const nextTimezoneOffsetMin = body.timezoneOffsetMin === undefined
+    ? schedule.timezoneOffsetMin
+    : typeof body.timezoneOffsetMin === "number" &&
+        Number.isInteger(body.timezoneOffsetMin) &&
+        body.timezoneOffsetMin >= -840 &&
+        body.timezoneOffsetMin <= 840
+      ? body.timezoneOffsetMin
+      : null;
+  if (nextTimezoneOffsetMin === null) {
+    return NextResponse.json({ error: "Invalid timezone offset." }, { status: 400 });
+  }
 
   const now = new Date();
   if (nextRepeat === "NONE" && nextStart.getTime() < now.getTime() - 5 * 60_000 && nextEnabled) {
@@ -69,14 +81,20 @@ export async function PATCH(
   }
 
   const timingChanged =
-    parsedStart !== undefined ||
-    body.repeat !== undefined ||
-    body.enabled !== undefined;
+    nextStart.getTime() !== schedule.startAt.getTime() ||
+    nextRepeat !== schedule.repeat ||
+    nextEnabled !== schedule.enabled ||
+    nextTimezoneOffsetMin !== schedule.timezoneOffsetMin;
 
   const nextRunAt = !nextEnabled
     ? null
     : timingChanged
-      ? nextMeetingScheduleAtOrAfter(nextStart, nextRepeat, new Date(now.getTime() - 60_000))
+      ? nextMeetingScheduleAtOrAfter(
+          nextStart,
+          nextRepeat,
+          new Date(now.getTime() - 60_000),
+          nextTimezoneOffsetMin,
+        )
       : schedule.nextRunAt;
 
   if (timingChanged) {
@@ -107,6 +125,7 @@ export async function PATCH(
       meetingUrl: nextUrl,
       title: body.title === undefined ? schedule.title : cleanMeetingTitle(body.title),
       startAt: nextStart,
+      timezoneOffsetMin: nextTimezoneOffsetMin,
       repeat: nextRepeat,
       enabled: nextEnabled && nextRunAt !== null,
       nextRunAt,
