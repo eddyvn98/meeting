@@ -37,6 +37,8 @@ async function requestJson(url: string, method: string, body?: unknown): Promise
 export function useOverviewSectionsEditor(meetingId: string, summary: MeetingSummary | null, setSummary: SetSummary) {
   const [savingSectionId, setSavingSectionId] = useState<string | null>(null);
   const [savingOverview, setSavingOverview] = useState(false);
+  const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [generatingTimeline, setGeneratingTimeline] = useState(false);
   const [generatingSectionId, setGeneratingSectionId] = useState<string | null>(null);
   const undoManager = useUndoManager();
 
@@ -73,6 +75,41 @@ export function useOverviewSectionsEditor(meetingId: string, summary: MeetingSum
         setSummary((prev) => ({ ...prev, overview: previousOverview }));
         await requestJson(`/api/meeting/${meetingId}/summary`, "PATCH", { overview: previousOverview });
       });
+    }
+  };
+
+  const regenerateSummary = async () => {
+    if (!summary || generatingSummary) return;
+    setGeneratingSummary(true);
+    try {
+      const data = (await requestJson(`/api/meeting/${meetingId}/summary/generate`, "POST", {
+        target: "summary",
+        language: getStoredOutputLanguage(),
+      })) as { summary: MeetingSummary };
+      setSummary((prev) => ({ ...prev, overview: data.summary.overview, updatedAt: data.summary.updatedAt }));
+      toast.success("Summary regenerated with AI.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not regenerate the summary");
+    } finally {
+      setGeneratingSummary(false);
+    }
+  };
+
+  const regenerateTimeline = async () => {
+    if (!summary || generatingTimeline) return;
+    setGeneratingTimeline(true);
+    try {
+      const data = (await requestJson(`/api/meeting/${meetingId}/summary/generate`, "POST", {
+        target: "timeline",
+        language: getStoredOutputLanguage(),
+      })) as { summary: MeetingSummary; generatedCount: number };
+      setSummary((prev) => ({ ...prev, topics: data.summary.topics, updatedAt: data.summary.updatedAt }));
+      if (data.generatedCount === 0) toast.info("The AI found no timeline entries in this transcript.");
+      else toast.success("Timeline regenerated with AI.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not regenerate the timeline");
+    } finally {
+      setGeneratingTimeline(false);
     }
   };
 
@@ -206,5 +243,20 @@ export function useOverviewSectionsEditor(meetingId: string, summary: MeetingSum
     }
   };
 
-  return { savingSectionId, savingOverview, generatingSectionId, generateSection, updateOverview, addSection, renameSection, deleteSection, moveSection, saveItems };
+  return {
+    savingSectionId,
+    savingOverview,
+    generatingSummary,
+    generatingTimeline,
+    generatingSectionId,
+    regenerateSummary,
+    regenerateTimeline,
+    generateSection,
+    updateOverview,
+    addSection,
+    renameSection,
+    deleteSection,
+    moveSection,
+    saveItems,
+  };
 }
