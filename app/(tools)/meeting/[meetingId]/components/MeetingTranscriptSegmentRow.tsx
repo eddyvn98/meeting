@@ -112,18 +112,19 @@ export function MeetingTranscriptSegmentRow({
 					<p className="mt-0.5 whitespace-pre-wrap text-sm text-foreground">{primaryText}</p>
 				) : (
 					<p className="mt-0.5 text-sm italic text-muted-foreground">
-						Translation not available yet.
+						AI translation not available yet.
 					</p>
 				)}
 
 				{showSecondary &&
 					(segment.textVi ? (
 						<p className="mt-0.5 whitespace-pre-wrap text-sm text-muted-foreground">
+							<span className="mr-1 text-[11px] font-medium uppercase tracking-wide opacity-70">AI</span>
 							{segment.textVi}
 						</p>
 					) : (
 						<p className="mt-0.5 text-sm italic text-muted-foreground">
-							Translation not available yet.
+							AI translation not available yet.
 						</p>
 					))}
 			</div>

@@ -8,7 +8,7 @@ export function BilingualText({ text }: { text: string }) {
 	return (
 		<>
 			{original}
-			<span className="mt-0.5 block text-[0.85em] italic opacity-80">{translated}</span>
+			<span className="mt-0.5 block text-[0.85em] italic opacity-80"><span className="mr-1 not-italic font-medium">AI:</span>{translated}</span>
 		</>
 	);
 }

@@ -85,7 +85,7 @@ export function MeetingTranslationToggle({
 					className="py-1.5 pl-3 pr-1 text-xs font-[inherit] disabled:cursor-not-allowed disabled:opacity-50"
 					aria-pressed={mode === "vi"}
 				>
-					{translatedLabel}
+					{translatedLabel} · AI
 				</button>
 				<DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
 					<DropdownMenuTrigger asChild>
