@@ -48,7 +48,12 @@ export async function POST(req: NextRequest) {
       const occurrence = schedule.nextRunAt;
 
       if (occurrence < staleBefore) {
-        const nextRunAt = nextMeetingScheduleAtOrAfter(schedule.startAt, schedule.repeat, now);
+        const nextRunAt = nextMeetingScheduleAtOrAfter(
+          schedule.startAt,
+          schedule.repeat,
+          now,
+          schedule.timezoneOffsetMin,
+        );
         await tx.meetingBotSchedule.updateMany({
           where: { id: schedule.id, enabled: true, nextRunAt: occurrence },
           data: { nextRunAt, enabled: nextRunAt !== null },
@@ -76,7 +81,12 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      const nextRunAt = nextMeetingScheduleRun(schedule.startAt, schedule.repeat, occurrence);
+      const nextRunAt = nextMeetingScheduleRun(
+        schedule.startAt,
+        schedule.repeat,
+        occurrence,
+        schedule.timezoneOffsetMin,
+      );
       const advanced = await tx.meetingBotSchedule.updateMany({
         where: {
           id: schedule.id,
