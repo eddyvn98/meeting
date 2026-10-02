@@ -64,16 +64,38 @@ export async function PATCH(
     return NextResponse.json({ error: "A one-time meeting cannot be enabled with a past start time." }, { status: 400 });
   }
 
-  const scheduleChanged =
+  const timingChanged =
     parsedStart !== undefined ||
     body.repeat !== undefined ||
     body.enabled !== undefined;
 
   const nextRunAt = !nextEnabled
     ? null
-    : scheduleChanged
+    : timingChanged
       ? nextMeetingScheduleAtOrAfter(nextStart, nextRepeat, new Date(now.getTime() - 60_000))
       : schedule.nextRunAt;
+
+  if (timingChanged) {
+    await prisma.meetingBotSession.deleteMany({
+      where: {
+        source: "SCHEDULE",
+        sourceKey: { startsWith: `${schedule.id}:` },
+        status: "REQUESTED",
+      },
+    });
+  } else if (body.meetingUrl !== undefined || body.title !== undefined) {
+    await prisma.meetingBotSession.updateMany({
+      where: {
+        source: "SCHEDULE",
+        sourceKey: { startsWith: `${schedule.id}:` },
+        status: "REQUESTED",
+      },
+      data: {
+        meetingUrl: nextUrl,
+        title: body.title === undefined ? schedule.title : cleanMeetingTitle(body.title),
+      },
+    });
+  }
 
   const updated = await prisma.meetingBotSchedule.update({
     where: { id: schedule.id },
@@ -97,8 +119,21 @@ export async function DELETE(
   const email = await resolveMeetingCallerEmail(req);
   if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const result = await prisma.meetingBotSchedule.deleteMany({
+  const schedule = await prisma.meetingBotSchedule.findFirst({
     where: { id: params.scheduleId, ownerEmail: email },
+  });
+  if (!schedule) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  await prisma.meetingBotSession.deleteMany({
+    where: {
+      source: "SCHEDULE",
+      sourceKey: { startsWith: `${schedule.id}:` },
+      status: "REQUESTED",
+    },
+  });
+
+  const result = await prisma.meetingBotSchedule.deleteMany({
+    where: { id: schedule.id, ownerEmail: email },
   });
   if (result.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ deleted: result.count });
