@@ -166,6 +166,18 @@ export function createBotSessionRunner(config) {
           exitMessage = "The bot was rejected from the Teams meeting.";
           break;
         }
+        if (snapshot.state === "LEFT") {
+          await recorderRuntime.pause(recorder);
+          const recovered = await recoverTeamsOrSetExit(
+            [teamsRuntime, session, heartbeat, sink.sinkName, storageState],
+            "The bot left Teams and could not rejoin.",
+          );
+          teamsRuntime = recovered.runtime;
+          if (recovered.exitMessage) { exitMessage = recovered.exitMessage; break; }
+          if (!teamsRuntime) break;
+          await recorderRuntime.resume(recorder);
+          continue;
+        }
         if (snapshot.state === "MEETING_ENDED") {
           await recorderRuntime.pause(recorder);
           try {
