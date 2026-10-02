@@ -128,14 +128,24 @@ export function createGraphCalendarClient({ env = process.env, fetchImpl = fetch
     });
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const response = await fetchImpl(
-        `https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}/oauth2/v2.0/token`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body,
-        },
-      );
+      let response;
+      try {
+        response = await fetchImpl(
+          `https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}/oauth2/v2.0/token`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body,
+            signal: AbortSignal.timeout(30_000),
+          },
+        );
+      } catch (error) {
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+          continue;
+        }
+        throw error;
+      }
 
       if ((response.status === 429 || response.status === 503) && attempt < 2) {
         const retryAfter = Number(response.headers.get("retry-after"));
@@ -161,12 +171,22 @@ export function createGraphCalendarClient({ env = process.env, fetchImpl = fetch
 
   async function graphGet(url) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const response = await fetchImpl(url, {
-        headers: {
-          Authorization: `Bearer ${await graphToken()}`,
-          Prefer: 'outlook.timezone="UTC", IdType="ImmutableId", odata.maxpagesize=100',
-        },
-      });
+      let response;
+      try {
+        response = await fetchImpl(url, {
+          headers: {
+            Authorization: `Bearer ${await graphToken()}`,
+            Prefer: 'outlook.timezone="UTC", IdType="ImmutableId", odata.maxpagesize=100',
+          },
+          signal: AbortSignal.timeout(30_000),
+        });
+      } catch (error) {
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+          continue;
+        }
+        throw error;
+      }
 
       if (response.status === 401 && attempt === 0) {
         accessToken = null;
