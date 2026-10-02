@@ -8,7 +8,11 @@ import {
   nextAloneState,
   parseParticipantCount,
 } from "./meeting-bot-lifecycle.mjs";
-import { createTeamsRecovery } from "./meeting-bot-recovery.mjs";
+import {
+  createTeamsRecovery,
+  isIntentionalTeamsExit,
+  isStopRejoinError,
+} from "./meeting-bot-recovery.mjs";
 import {
   errorCode,
   prepareTeamsPage,
@@ -104,32 +108,6 @@ export function createBotSessionRunner(config) {
       body: JSON.stringify({ runnerId }),
     }).catch(() => null);
   }
-  function intentionalExit(error) {
-    const code = errorCode(error);
-    return code === "TEAMS_JOIN_REJECTED" || code === "TEAMS_REMOVED";
-  }
-  function stopRejoinError(error) {
-    return [
-      "TEAMS_JOIN_REJECTED",
-      "TEAMS_REMOVED",
-      "TEAMS_ACCESS_DENIED",
-      "TEAMS_INVALID_LINK",
-    ].includes(errorCode(error));
-  }
-  async function recoverTeamsOrSetExit(args, errorToMessage) {
-    try {
-      const runtime = await recovery.reconnectTeams(...args);
-      return { runtime, exitMessage: null };
-    } catch (error) {
-      if (stopRejoinError(error)) {
-        return {
-          runtime: null,
-          exitMessage: error instanceof Error ? error.message : errorToMessage,
-        };
-      }
-      throw error;
-    }
-  }
   async function runSession(session, storageState) {
     const heartbeat = createHeartbeat(session.id);
     let sink;
@@ -156,7 +134,7 @@ export function createBotSessionRunner(config) {
         }
         if (!teamsRuntime?.browser.isConnected() || teamsRuntime.page.isClosed()) {
           await recorderRuntime.pause(recorder);
-          const recovered = await recoverTeamsOrSetExit(
+          const recovered = await recovery.reconnectOrSetExit(
             [teamsRuntime, session, heartbeat, sink.sinkName, storageState],
             "The bot was removed from Teams.",
           );
@@ -182,7 +160,7 @@ export function createBotSessionRunner(config) {
               teamsRuntime, session, heartbeat, sink.sinkName, storageState,
             );
           } catch (error) {
-            if (!stopRejoinError(error)) throw error;
+            if (!isStopRejoinError(error)) throw error;
             exitMessage = error instanceof Error ? error.message : "The bot was not admitted again.";
             break;
           }
@@ -202,7 +180,7 @@ export function createBotSessionRunner(config) {
           reconnectingSince ??= Date.now();
           if (Date.now() - reconnectingSince >= 15_000) {
             await recorderRuntime.pause(recorder);
-            const recovered = await recoverTeamsOrSetExit(
+            const recovered = await recovery.reconnectOrSetExit(
               [teamsRuntime, session, heartbeat, sink.sinkName, storageState],
               "The bot was removed while reconnecting.",
             );
@@ -263,7 +241,7 @@ export function createBotSessionRunner(config) {
             break;
           }
         } catch (error) {
-          if (!stopRejoinError(error)) throw error;
+          if (!isStopRejoinError(error)) throw error;
           exitMessage = error instanceof Error ? error.message : "The bot was removed during audio recovery.";
           break;
         }
@@ -291,7 +269,7 @@ export function createBotSessionRunner(config) {
       const code = errorCode(error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       const failedMeetingId = recorder?.meetingId || error?.meetingId;
-      if (intentionalExit(error) && !recorder) {
+      if (isIntentionalTeamsExit(error) && !recorder) {
         await heartbeat.update("ENDED", { errorMessage }).catch(() => undefined);
       } else {
         await heartbeat.update("FAILED", {
