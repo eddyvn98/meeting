@@ -5,6 +5,7 @@ import {
   nextMeetingScheduleAtOrAfter,
   nextMeetingScheduleRun,
 } from "@/lib/meeting/bot/recurrence";
+import { sameBotOccurrence } from "@/lib/meeting/bot/sessionKeys";
 
 export const runtime = "nodejs";
 
@@ -72,24 +73,36 @@ export async function POST(req: NextRequest) {
             source: "SCHEDULE",
             sourceKey: { startsWith: `${schedule.id}:` },
           },
-          OR: [
-            {
-              scheduledAt: {
-                gte: new Date(occurrence.getTime() - 10 * 60_000),
-                lte: new Date(occurrence.getTime() + 10 * 60_000),
-              },
-            },
-            {
-              scheduledAt: null,
-              sourceKey: { contains: ":continuation:" },
-              status: { in: ["REQUESTED","CLAIMED","JOINING","LOBBY","JOINED","CAPTURING","STOP_REQUESTED"] },
-            },
-          ],
+          scheduledAt: {
+            gte: new Date(occurrence.getTime() - 10 * 60_000),
+            lte: new Date(occurrence.getTime() + 10 * 60_000),
+          },
         },
         orderBy: { requestedAt: "asc" },
       });
 
-      if (!conflict) await tx.meetingBotSession.upsert({
+      let continuationConflict = null;
+      if (!conflict) {
+        const continuations = await tx.meetingBotSession.findMany({
+          where: {
+            meetingUrl: schedule.meetingUrl,
+            status: { not: "FAILED" },
+            scheduledAt: null,
+            sourceKey: { contains: ":continuation:" },
+            NOT: {
+              source: "SCHEDULE",
+              sourceKey: { startsWith: `${schedule.id}:` },
+            },
+          },
+          orderBy: { requestedAt: "desc" },
+          take: 50,
+        });
+        continuationConflict = continuations.find((session) =>
+          sameBotOccurrence(session.sourceKey, occurrence),
+        ) ?? null;
+      }
+
+      if (!conflict && !continuationConflict) await tx.meetingBotSession.upsert({
         where: {
           source_sourceKey: {
             source: "SCHEDULE",
