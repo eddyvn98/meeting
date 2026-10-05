@@ -313,6 +313,7 @@ export default function MeetingResultPage() {
 									segments={translation.displaySegments}
 									speakers={detail.speakers}
 									speakerMappings={detail.speakerMappings}
+									participantNames={detail.participantNames}
 									languageMode={translation.languageMode}
 									canEdit={detail.accessRole === "owner" || detail.accessRole === "editor"}
 									onSegmentEdit={editSegment}
