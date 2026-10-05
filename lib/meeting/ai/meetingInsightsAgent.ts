@@ -18,7 +18,7 @@ import {
 } from "./meetingInsightsParser";
 import { describeSectionKindsForPrompt } from "../sectionGeneration";
 import { chunkByCharBudget, runWithConcurrency } from "./batchLines";
-import { callChatAgent, callWorkflowApp, resolveWorkflowConfig } from "./difyClient";
+import { callProcessingWorkflow } from "./processingWorkflow";
 
 export interface MeetingAgentTranscriptLine {
   speaker: string;
@@ -28,6 +28,8 @@ export interface MeetingAgentTranscriptLine {
 
 const MAX_TRANSCRIPT_CHARS = 12_000;
 const MAX_CONCURRENT_BATCHES = 4;
+const INSIGHTS_LEGACY_KEYS = ["MEETING_INSIGHTS_WORKFLOW_KEY", "INSIGHTS_WORKFLOW_KEY", "DIFY_INSIGHTS_API_KEY"];
+const INSIGHTS_LEGACY_URLS = ["MEETING_INSIGHTS_WORKFLOW_URL", "INSIGHTS_WORKFLOW_URL", "DIFY_INSIGHTS_API_URL"];
 
 function buildInsightsQuery(
   meetingTitle: string,
@@ -88,15 +90,19 @@ async function consolidateOverviews(
     "",
     `Write ONE 2-4 sentence overview of the WHOLE meeting that reads as a single coherent summary, not a list of parts. ${outputLanguage ? `Write it in ${outputLanguage}.` : "Write it in the same predominant language as the input summaries above."} Reply with ONLY that prose, no preamble.`,
   ].join("\n");
-  const raw = await callChatAgent(query, callerEmail);
+  const raw = await callProcessingWorkflow({
+    feature: "insights",
+    callerEmail,
+    legacyKeyEnvNames: INSIGHTS_LEGACY_KEYS,
+    legacyUrlEnvNames: INSIGHTS_LEGACY_URLS,
+    inputs: {
+      task: "consolidate_overviews",
+      meeting_title: meetingTitle,
+      overviews_json: JSON.stringify(overviews),
+      output_language: outputLanguage ?? "",
+    },
+  });
   return raw?.trim() || overviews.join("\n\n");
-}
-
-function getInsightsWorkflowConfig(): { key: string; url: string } | null {
-  return resolveWorkflowConfig(
-    ["MEETING_AI_KEY", "MEETING_INSIGHTS_WORKFLOW_KEY", "INSIGHTS_WORKFLOW_KEY", "DIFY_INSIGHTS_API_KEY"],
-    ["MEETING_AI_URL", "MEETING_INSIGHTS_WORKFLOW_URL", "INSIGHTS_WORKFLOW_URL", "DIFY_INSIGHTS_API_URL"],
-  );
 }
 
 export async function generateMeetingInsights(options: {
@@ -112,39 +118,22 @@ export async function generateMeetingInsights(options: {
 
   const chunks = chunkByCharBudget(transcript, (line) => `[${line.speaker}] ${line.text}`, MAX_TRANSCRIPT_CHARS);
   const isPartial = chunks.length > 1;
-  const wfConfig = getInsightsWorkflowConfig();
-
   const perChunk = await runWithConcurrency(chunks, MAX_CONCURRENT_BATCHES, async (chunkSegments) => {
-    let raw: string | null = null;
-
-    if (wfConfig) {
-      try {
-        const numbered = chunkSegments.map((s, i) => `[${i}] [${s.speaker}] ${s.text}`).join("\n");
-        raw = await callWorkflowApp(
-          {
-            task: "insights",
-            meeting_title: meetingTitle,
-            transcript: numbered,
-            output_language: outputLanguage ?? "",
-          },
-          callerEmail,
-          wfConfig.key,
-          wfConfig.url,
-          AbortSignal.timeout(35_000),
-        );
-      } catch (err) {
-        console.warn("[meeting] Fast insights workflow failed, falling back to chat agent:", err);
-      }
-    }
-
-    if (!raw) {
-      const query = buildInsightsQuery(meetingTitle, chunkSegments, isPartial, outputLanguage);
-      raw = await callChatAgent(query, callerEmail);
-      if (!raw) {
-        // Retry once on transient upstream failure
-        raw = await callChatAgent(query, callerEmail);
-      }
-    }
+    const numbered = chunkSegments.map((segment, i) => `[${i}] [${segment.speaker}] ${segment.text}`).join("\n");
+    const raw = await callProcessingWorkflow({
+      feature: "insights",
+      callerEmail,
+      legacyKeyEnvNames: INSIGHTS_LEGACY_KEYS,
+      legacyUrlEnvNames: INSIGHTS_LEGACY_URLS,
+      signal: AbortSignal.timeout(35_000),
+      inputs: {
+        task: "insights",
+        meeting_title: meetingTitle,
+        transcript: numbered,
+        output_language: outputLanguage ?? "",
+        prompt_fallback: buildInsightsQuery(meetingTitle, chunkSegments, isPartial, outputLanguage),
+      },
+    });
 
     return raw ? parseMeetingInsights(raw, chunkSegments.length) : null;
   });
