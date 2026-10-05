@@ -30,6 +30,7 @@ interface BlockingRequestOptions {
   body: Record<string, unknown>;
   context: DifyUsageContext;
   signal?: AbortSignal;
+  validateAnswer?: (answer: string) => boolean;
 }
 
 async function runBlockingRequest(options: BlockingRequestOptions): Promise<string | null> {
@@ -95,15 +96,16 @@ async function runBlockingRequest(options: BlockingRequestOptions): Promise<stri
     }
 
     const answer = extractAnswer(payload);
+    const valid = Boolean(answer) && (options.validateAnswer ? options.validateAnswer(answer) : true);
     await recordDifyBlockingResponse(
       options.context,
       payload,
       attempt,
-      answer ? "SUCCESS" : "EMPTY",
+      valid ? "SUCCESS" : answer ? "INVALID" : "EMPTY",
       upstream.status,
       startedAt,
     );
-    if (answer) return answer;
+    if (valid) return answer;
     if (attempt >= DIFY_BLOCKING_MAX_ATTEMPTS) return null;
     await waitForDifyRetry();
   }
@@ -171,6 +173,7 @@ export async function callWorkflowApp(
   apiUrl: string,
   signal?: AbortSignal,
   usageFeature?: string,
+  validateAnswer?: (answer: string) => boolean,
 ): Promise<string | null> {
   if (!apiKey || !apiUrl) return null;
 
@@ -185,6 +188,7 @@ export async function callWorkflowApp(
       inputs,
     ),
     signal,
+    validateAnswer,
     body: {
       inputs,
       response_mode: "blocking",
