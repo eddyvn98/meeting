@@ -15,13 +15,24 @@ interface ProcessingCallOptions {
   feature: MeetingProcessingFeature;
   legacyKeyEnvNames?: string[];
   legacyUrlEnvNames?: string[];
+  /** External cancellation only (for example the HTTP request closing). */
   signal?: AbortSignal;
+  /** Maximum time allowed for each model before moving to fallback. */
+  modelTimeoutMs?: number;
   validateAnswer?: (answer: string) => boolean;
 }
 
 function envModel(feature: MeetingProcessingFeature, kind: "PRIMARY" | "FALLBACK"): string | undefined {
   const featureKey = `MEETING_DIFY_${feature.toUpperCase()}_${kind}_MODEL`;
   return process.env[featureKey]?.trim() || process.env[`MEETING_DIFY_${kind}_MODEL`]?.trim() || undefined;
+}
+
+function modelSignal(options: ProcessingCallOptions): AbortSignal | undefined {
+  const timeout = options.modelTimeoutMs && options.modelTimeoutMs > 0
+    ? AbortSignal.timeout(options.modelTimeoutMs)
+    : undefined;
+  if (options.signal && timeout) return AbortSignal.any([options.signal, timeout]);
+  return options.signal ?? timeout;
 }
 
 export function getProcessingModelPolicy(feature: MeetingProcessingFeature): {
@@ -67,7 +78,7 @@ export async function callProcessingWorkflow(options: ProcessingCallOptions): Pr
     options.callerEmail,
     config.key,
     config.url,
-    options.signal,
+    modelSignal(options),
     options.feature,
     options.validateAnswer,
   );
@@ -80,7 +91,7 @@ export async function callProcessingWorkflow(options: ProcessingCallOptions): Pr
     options.callerEmail,
     config.key,
     config.url,
-    options.signal,
+    modelSignal(options),
     options.feature,
     options.validateAnswer,
   );
