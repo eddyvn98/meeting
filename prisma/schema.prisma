@@ -183,28 +183,32 @@ model MeetingSttUsage {
 }
 
 model MeetingAiUsage {
-  id               String    @id @default(cuid())
-  requestId        String    @unique
-  userEmail        String
-  provider         String    @default("dify")
-  category         String
-  feature          String
-  requestedModel   String?
-  providerModel    String?
-  inputTokens      Int       @default(0)
-  outputTokens     Int       @default(0)
-  totalTokens      Int       @default(0)
-  totalPrice       Decimal?  @db.Decimal(18, 8)
-  currency         String?
-  latencyMs        Int?
-  status           String
+  id                String    @id @default(cuid())
+  requestId         String    @unique
+  userEmail         String
+  provider          String    @default("dify")
+  app               String
+  feature           String
+  attempt           Int       @default(1)
+  requestedModel    String?
+  providerModel     String?
+  inputTokens       Int       @default(0)
+  outputTokens      Int       @default(0)
+  totalTokens       Int       @default(0)
+  totalPrice        Decimal?  @db.Decimal(18, 8)
+  currency          String?
+  latencyMs         Int?
+  httpStatus        Int?
+  status            String
   providerRequestId String?
-  workflowRunId    String?
-  createdAt        DateTime  @default(now())
+  workflowRunId     String?
+  errorMessage      String?   @db.Text
+  createdAt         DateTime  @default(now())
 
   @@index([userEmail, createdAt])
+  @@index([app, createdAt])
   @@index([feature, createdAt])
-  @@index([category, createdAt])
+  @@index([providerModel, createdAt])
   @@index([status, createdAt])
   @@map("meeting_ai_usage")
 }
