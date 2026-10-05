@@ -60,6 +60,7 @@ export async function generateTranslations(
       legacyUrlEnvNames: TRANSLATION_LEGACY_URLS,
       signal: AbortSignal.timeout(20_000),
       inputs,
+      validateAnswer: (answer) => parseTranslations(answer, chunkLines.length) !== null,
     });
 
     const parsed = raw ? parseTranslations(raw, chunkLines.length) : null;
