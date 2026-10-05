@@ -18,6 +18,7 @@ The repository includes an unattended Teams Web runner:
 
 - `scripts/meeting-bot-runner.mjs`: lifecycle, Teams Web join, recording and automatic leave.
 - `scripts/meeting-bot-audio.mjs`: isolated PulseAudio sink/source per meeting.
+- `scripts/meeting-bot-auth.mjs`: one-time interactive Microsoft/Teams sign-in that saves reusable Playwright auth state.
 - `scripts/meeting-bot-calendar.mjs`: optional Microsoft Graph Outlook calendar synchronization.
 - `/meeting/bot`: internal meeting scheduler (paste Teams link/invitation, one-time or recurring).
 
