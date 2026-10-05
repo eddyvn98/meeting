@@ -2,6 +2,13 @@ import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isMeetingUsageServiceRequest } from "./_auth";
+import {
+  decimal,
+  pricesFor,
+  serializeAiEvent,
+  serializeSttEvent,
+  tokenGroups,
+} from "./_serialize";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,25 +33,11 @@ function parseLimit(raw: string | null): number {
     : DEFAULT_EVENT_LIMIT;
 }
 
-function decimal(value: Prisma.Decimal | null | undefined): number {
-  return value == null ? 0 : Number(value);
-}
-
 function countStatus(
   rows: Array<{ status: string; _count: { _all: number } }>,
   status: string,
 ): number {
   return rows.find((row) => row.status === status)?._count._all ?? 0;
-}
-
-function pricesFor(
-  rows: Array<{ currency: string | null; _sum: { totalPrice: Prisma.Decimal | null } }>,
-): Record<string, number> {
-  return Object.fromEntries(
-    rows
-      .filter((row): row is typeof row & { currency: string } => Boolean(row.currency))
-      .map((row) => [row.currency, decimal(row._sum.totalPrice)]),
-  );
 }
 
 export async function GET(req: NextRequest) {
@@ -225,18 +218,6 @@ export async function GET(req: NextRequest) {
     })
     .sort((a, b) => b.totalTokens - a.totalTokens);
 
-  const tokenGroup = <T extends { _count: { _all: number }; _sum: { inputTokens: number | null; outputTokens: number | null; totalTokens: number | null } }>(
-    rows: T[],
-  ) => rows.map((row) => ({
-    ...row,
-    requestCount: row._count._all,
-    inputTokens: row._sum.inputTokens ?? 0,
-    outputTokens: row._sum.outputTokens ?? 0,
-    totalTokens: row._sum.totalTokens ?? 0,
-    _count: undefined,
-    _sum: undefined,
-  }));
-
   const response = NextResponse.json({
     generatedAt: now.toISOString(),
     period: { from: from.toISOString(), to: to.toISOString() },
@@ -265,34 +246,7 @@ export async function GET(req: NextRequest) {
         providerDurationMs: row._sum.providerDurationMs ?? 0,
         providerCostUsd: decimal(row._sum.providerCostUsd),
       })),
-      events: includeEvents
-        ? sttEvents.map((event) => ({
-            id: event.id,
-            requestId: event.requestId,
-            meetingId: event.meetingId,
-            meetingTitle: event.meeting?.title ?? null,
-            userEmail: event.userEmail,
-            provider: event.provider,
-            model: event.model,
-            purpose: event.purpose,
-            jobId: event.jobId,
-            chunkIndex: event.chunkIndex,
-            attempt: event.attempt,
-            sampleRate: event.sampleRate,
-            inputBytes: event.inputBytes,
-            audioDurationMs: event.audioDurationMs,
-            providerDurationMs: event.providerDurationMs,
-            status: event.status,
-            latencyMs: event.latencyMs,
-            upstreamStatusCode: event.upstreamStatusCode,
-            providerRequestId: event.providerRequestId,
-            providerCostUsd: event.providerCostUsd == null ? null : Number(event.providerCostUsd),
-            detectedLanguage: event.detectedLanguage,
-            errorMessage: event.errorMessage,
-            startedAt: event.startedAt.toISOString(),
-            completedAt: event.completedAt?.toISOString() ?? null,
-          }))
-        : undefined,
+      events: includeEvents ? sttEvents.map(serializeSttEvent) : undefined,
     },
     ai: {
       totals: {
@@ -305,34 +259,10 @@ export async function GET(req: NextRequest) {
         priceByCurrency: pricesFor(aiPrices),
       },
       byUser: aiUsers,
-      byApp: tokenGroup(aiByApp),
-      byFeature: tokenGroup(aiByFeature),
-      byModel: tokenGroup(aiByModel),
-      events: includeEvents
-        ? aiEvents.map((event) => ({
-            id: event.id,
-            requestId: event.requestId,
-            userEmail: event.userEmail,
-            provider: event.provider,
-            app: event.app,
-            feature: event.feature,
-            attempt: event.attempt,
-            requestedModel: event.requestedModel,
-            providerModel: event.providerModel,
-            inputTokens: event.inputTokens,
-            outputTokens: event.outputTokens,
-            totalTokens: event.totalTokens,
-            totalPrice: event.totalPrice == null ? null : Number(event.totalPrice),
-            currency: event.currency,
-            latencyMs: event.latencyMs,
-            httpStatus: event.httpStatus,
-            status: event.status,
-            providerRequestId: event.providerRequestId,
-            workflowRunId: event.workflowRunId,
-            errorMessage: event.errorMessage,
-            createdAt: event.createdAt.toISOString(),
-          }))
-        : undefined,
+      byApp: tokenGroups(aiByApp),
+      byFeature: tokenGroups(aiByFeature),
+      byModel: tokenGroups(aiByModel),
+      events: includeEvents ? aiEvents.map(serializeAiEvent) : undefined,
     },
   });
   response.headers.set("Cache-Control", "private, no-store");
