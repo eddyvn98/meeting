@@ -107,7 +107,7 @@ export function createBotSessionRunner(config) {
         teamsRuntime.page,
         [/^People$/i, /^Participants$/i, /Người tham gia/i],
       ).catch(() => false);
-      recorder = await recorderRuntime.launch(session, sink.sourceName, storageState);
+      recorder = await recorderRuntime.launch(session, sink.sourceName);
       await heartbeat.update("CAPTURING", { meetingId: recorder.meetingId });
       const captureStartedAtMs = Date.now();
       let aloneState = initialAloneState();
