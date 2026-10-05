@@ -11,6 +11,7 @@
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "meeting:bot": "node scripts/meeting-bot-runner.mjs",
+    "meeting:bot:auth": "node scripts/meeting-bot-auth.mjs",
     "meeting:check-brand": "node scripts/check-no-branding.mjs",
     "meeting:graph:check": "node scripts/meeting-bot-graph-check.mjs"
   },
