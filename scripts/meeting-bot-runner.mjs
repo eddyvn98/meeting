@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { getTeamsStorageState, resolveTeamsAuthMode } from "./meeting-bot-auth-state.mjs";
 import { createCalendarSync, hasCalendarConfig } from "./meeting-bot-calendar.mjs";
 import { computeProcessingTimeoutMs } from "./meeting-bot-lifecycle.mjs";
 import { createMeetingRecorderRuntime } from "./meeting-bot-recorder.mjs";
@@ -16,7 +17,12 @@ const graphSyncMs = Math.max(
   ),
 );
 const schedulePollMs = positiveNumber(process.env.MEETING_BOT_SCHEDULE_POLL_MS, 15_000);
-const maxConcurrency = Math.max(1, Math.floor(positiveNumber(process.env.MEETING_BOT_MAX_CONCURRENCY, 2)));
+const configuredMaxConcurrency = Math.max(
+  1,
+  Math.floor(positiveNumber(process.env.MEETING_BOT_MAX_CONCURRENCY, 2)),
+);
+const teamsAuthMode = resolveTeamsAuthMode();
+const maxConcurrency = teamsAuthMode === "authenticated" ? 1 : configuredMaxConcurrency;
 
 const nextAuthSecret = process.env.NEXTAUTH_SECRET?.trim();
 if (!nextAuthSecret) throw new Error("NEXTAUTH_SECRET is required for the meeting bot STT session.");
@@ -136,7 +142,13 @@ async function main() {
     throw new Error("The unattended meeting bot requires Linux with PulseAudio/PipeWire Pulse.");
   }
 
-  const storageState = undefined;
+  const teamsStorageState = await getTeamsStorageState();
+  console.log(`[meeting-bot] Teams join mode: ${teamsAuthMode}.`);
+  if (teamsAuthMode === "authenticated" && configuredMaxConcurrency > 1) {
+    console.log(
+      "[meeting-bot] Authenticated mode currently uses one account, so concurrency is clamped to 1.",
+    );
+  }
   const calendarSync = hasCalendarConfig() ? createCalendarSync({ api }) : null;
   if (!calendarSync) {
     console.log("[meeting-bot] Microsoft Graph sync is disabled; internal schedules remain active.");
@@ -179,7 +191,7 @@ async function main() {
 
       if (!session || !sessionRunner.ACTIVE_STATUSES.has(session.status)) break;
       const run = sessionRunner
-        .runSession(session, storageState)
+        .runSession(session, teamsStorageState)
         .catch((error) => {
           console.error(
             `[meeting-bot] session ${session.id} crashed outside lifecycle handling:`,
