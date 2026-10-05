@@ -30,6 +30,7 @@ export function MeetingSpeakerRenameList({
 	meetingId,
 	speakers,
 	speakerMappings,
+	participantNames,
 	segments,
 	nameOverrides,
 	onRenamed,
@@ -39,6 +40,7 @@ export function MeetingSpeakerRenameList({
 	meetingId: string;
 	speakers: Speaker[];
 	speakerMappings: SpeakerMapping[];
+	participantNames: string[];
 	segments: TranscriptSegment[];
 	nameOverrides: Record<string, string>;
 	onRenamed: (speakerKey: string, displayName: string) => void;
@@ -55,7 +57,7 @@ export function MeetingSpeakerRenameList({
 	const [mergeSource, setMergeSource] = useState("");
 	const [mergeTarget, setMergeTarget] = useState("");
 	const [showDirectory, setShowDirectory] = useState(false);
-	const [participantNames, setParticipantNames] = useState<string[]>([]);
+	const [manualParticipantNames, setManualParticipantNames] = useState<string[]>([]);
 
 	const mappingByKey = new Map(speakerMappings.map((m) => [m.speakerKey, m.displayName]));
 	const nameFor = (speakerKey: string) =>
@@ -119,7 +121,9 @@ export function MeetingSpeakerRenameList({
 		setMergeTarget("");
 	};
 
-	const mergeTargetOptions = Array.from(new Set([...groups.map((g) => g.displayName), ...participantNames])).sort();
+	const mergeTargetOptions = Array.from(
+		new Set([...groups.map((g) => g.displayName), ...participantNames, ...manualParticipantNames]),
+	).sort();
 
 	return (
 		<div className="flex flex-col gap-3">
@@ -190,9 +194,21 @@ export function MeetingSpeakerRenameList({
 
 				{error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
 
+				{participantNames.length > 0 && (
+					<div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+						<Users className="h-3.5 w-3.5" />
+						<span className="mr-1 font-medium text-foreground">Participants detected in Teams</span>
+						{participantNames.map((name) => (
+							<span key={name} className="rounded-full border border-border bg-muted px-2 py-0.5">
+								{name}
+							</span>
+						))}
+					</div>
+				)}
+
 				<MeetingParticipantPicker
 					existingNames={mergeTargetOptions}
-					onAdd={(name) => setParticipantNames((prev) => [...prev, name])}
+					onAdd={(name) => setManualParticipantNames((prev) => [...prev, name])}
 				/>
 
 				{/* Confirms each name actually landed in the "into" list below — add
@@ -200,9 +216,9 @@ export function MeetingSpeakerRenameList({
 				    up here immediately so it's clear the picker doesn't replace the
 				    previous pick. Removing one here only drops it from this
 				    suggestion pool, it never affects an already-completed merge. */}
-				{participantNames.length > 0 && (
+				{manualParticipantNames.length > 0 && (
 					<ul className="flex flex-wrap gap-1.5">
-						{participantNames.map((name) => (
+						{manualParticipantNames.map((name) => (
 							<li
 								key={name}
 								className="flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] text-muted-foreground"
@@ -210,7 +226,7 @@ export function MeetingSpeakerRenameList({
 								{name}
 								<button
 									type="button"
-									onClick={() => setParticipantNames((prev) => prev.filter((n) => n !== name))}
+									onClick={() => setManualParticipantNames((prev) => prev.filter((n) => n !== name))}
 									aria-label={`Remove ${name} from participant list`}
 								>
 									<X className="h-3 w-3 hover:text-foreground" />
