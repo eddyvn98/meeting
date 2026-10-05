@@ -7,17 +7,13 @@
 
 import { parseTranslations } from "./meetingTranslationParser";
 import { chunkByCharBudget, runWithConcurrency } from "./batchLines";
-import { callChatAgent, callWorkflowApp, resolveWorkflowConfig } from "./difyClient";
+import { callProcessingWorkflow } from "./processingWorkflow";
 
 const TRANSLATION_CHUNK_CHARS = 3_000;
 const MAX_CONCURRENT_BATCHES = 4;
 
-function getTranslationWorkflowConfig(): { key: string; url: string } | null {
-  return resolveWorkflowConfig(
-    ["MEETING_AI_KEY", "TRANSLATION_WORKFLOW_KEY", "DIFY_TRANSLATION_API_KEY"],
-    ["MEETING_AI_URL", "TRANSLATION_WORKFLOW_URL", "DIFY_TRANSLATION_API_URL"],
-  );
-}
+const TRANSLATION_LEGACY_KEYS = ["TRANSLATION_WORKFLOW_KEY", "DIFY_TRANSLATION_API_KEY"];
+const TRANSLATION_LEGACY_URLS = ["TRANSLATION_WORKFLOW_URL", "DIFY_TRANSLATION_API_URL"];
 
 export function buildTranslationQuery(
   lines: string[],
@@ -48,32 +44,20 @@ export async function generateTranslations(
   if (lines.length === 0) return null;
 
   async function translateChunk(chunkLines: string[], allowBisect: boolean): Promise<(string | null)[] | null> {
-    const wfConfig = getTranslationWorkflowConfig();
-    let raw: string | null = null;
-
-    if (wfConfig) {
-      try {
-        const numbered = chunkLines.map((text, i) => `[${i}] ${text}`).join("\n");
-        raw = await callWorkflowApp(
-          {
-            task: "translate_batch",
-            text: numbered,
-            target_language: targetLanguageLabel,
-          },
-          callerEmail,
-          wfConfig.key,
-          wfConfig.url,
-          AbortSignal.timeout(20_000),
-        );
-      } catch (err) {
-        console.warn("[meeting] Fast batch translation workflow failed, falling back to chat agent:", err);
-      }
-    }
-
-    if (!raw) {
-      const query = buildTranslationQuery(chunkLines, targetLanguageLabel, glossaryBlock);
-      raw = await callChatAgent(query, callerEmail);
-    }
+    const numbered = chunkLines.map((text, i) => `[${i}] ${text}`).join("\n");
+    const raw = await callProcessingWorkflow({
+      feature: "translation",
+      callerEmail,
+      legacyKeyEnvNames: TRANSLATION_LEGACY_KEYS,
+      legacyUrlEnvNames: TRANSLATION_LEGACY_URLS,
+      signal: AbortSignal.timeout(20_000),
+      inputs: {
+        task: "translate_batch",
+        text: numbered,
+        target_language: targetLanguageLabel,
+        glossary: glossaryBlock ?? "",
+      },
+    });
 
     const parsed = raw ? parseTranslations(raw, chunkLines.length) : null;
     if (parsed || !allowBisect || chunkLines.length < 2) return parsed;
