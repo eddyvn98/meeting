@@ -1,7 +1,7 @@
 /**
  * lib/meeting/ai/meetingTranslationAgent.ts
  *
- * Full-transcript translation pipeline using the shared CHAT_KEY Dify agent.
+ * Full-transcript translation pipeline using the Meeting processing Dify app.
  * Handles batching, concurrency limits, and bisection retries.
  */
 
@@ -45,18 +45,21 @@ export async function generateTranslations(
 
   async function translateChunk(chunkLines: string[], allowBisect: boolean): Promise<(string | null)[] | null> {
     const numbered = chunkLines.map((text, i) => `[${i}] ${text}`).join("\n");
+    const inputs: Record<string, unknown> = {
+      task: "translate_batch",
+      text: numbered,
+      target_language: targetLanguageLabel,
+    };
+    const glossaryInput = process.env.MEETING_DIFY_TRANSLATION_GLOSSARY_INPUT?.trim();
+    if (glossaryBlock && glossaryInput) inputs[glossaryInput] = glossaryBlock;
+
     const raw = await callProcessingWorkflow({
       feature: "translation",
       callerEmail,
       legacyKeyEnvNames: TRANSLATION_LEGACY_KEYS,
       legacyUrlEnvNames: TRANSLATION_LEGACY_URLS,
       signal: AbortSignal.timeout(20_000),
-      inputs: {
-        task: "translate_batch",
-        text: numbered,
-        target_language: targetLanguageLabel,
-        glossary: glossaryBlock ?? "",
-      },
+      inputs,
     });
 
     const parsed = raw ? parseTranslations(raw, chunkLines.length) : null;
