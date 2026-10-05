@@ -4,24 +4,29 @@ import { resolveMeetingCallerEmail } from "../../_auth";
 import {
   transcribeChunkWithOpenRouter,
   getOpenRouterSpeechConfig,
+  OpenRouterSpeechError,
 } from "@/lib/meeting/stt/openRouterSpeechService";
+import {
+  calculatePcmDurationMs,
+  completePaidSttUsage,
+  failPaidSttUsage,
+  parseSttUsageRequestMeta,
+  startPaidSttUsage,
+} from "@/lib/meeting/stt/usage";
 
 export const runtime = "nodejs";
 
-// Callers (liveTranscription.ts, fastServerTranscription.ts) send at most a
-// ~30-60s window of 16-bit PCM per request. At the top of the supported
-// sample-rate range (48kHz mono, 2 bytes/sample) that's ~5.5MB; cap well
-// above that so a legitimate chunk never gets rejected while still bounding
-// how much memory and upstream cost a single request can consume.
 const MAX_PCM_BYTES = 16 * 1024 * 1024;
 
 /**
- * POST /api/meeting/[meetingId]/transcribe-fast
- *
- * Server-side endpoint for "fast (paid)" transcription using OpenRouter MAI-Transcribe 2.
- * Takes 16-bit PCM audio in request body and returns transcribed segments.
+ * Paid/cloud STT endpoint. Every accepted upstream attempt gets a durable
+ * usage row before the provider is called, so live/final/retry traffic can
+ * be attributed to the authenticated Meeting user without provider billing
+ * access.
  */
 export async function POST(req: NextRequest, { params }: { params: { meetingId: string } }) {
+  let usage: { id: string; startedAt: Date } | null = null;
+
   try {
     const email = await resolveMeetingCallerEmail(req);
     if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -53,7 +58,6 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     }
 
     const pcmBuffer = await req.arrayBuffer();
-
     if (pcmBuffer.byteLength === 0) {
       return NextResponse.json({ error: "Empty audio body" }, { status: 400 });
     }
@@ -64,14 +68,21 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     const config = getOpenRouterSpeechConfig();
     if (!config) {
       return NextResponse.json(
-        {
-          error: "OpenRouter STT is not configured.",
-          segments: [],
-          spans: [],
-        },
+        { error: "OpenRouter STT is not configured.", segments: [], spans: [] },
         { status: 503 },
       );
     }
+
+    usage = await startPaidSttUsage({
+      meetingId: meeting.id,
+      userEmail: email,
+      provider: "openrouter",
+      model: config.model,
+      sampleRate,
+      inputBytes: pcmBuffer.byteLength,
+      audioDurationMs: calculatePcmDurationMs(pcmBuffer.byteLength, sampleRate),
+      meta: parseSttUsageRequestMeta(req.headers),
+    });
 
     const result = await transcribeChunkWithOpenRouter(
       Buffer.from(pcmBuffer),
@@ -81,15 +92,33 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
       req.signal,
     );
 
+    await completePaidSttUsage({
+      usageId: usage.id,
+      startedAt: usage.startedAt,
+      providerDurationMs: result.rawDurationMs,
+      providerRequestId: result.providerRequestId,
+      providerCostUsd: result.providerCostUsd,
+      detectedLanguage: result.detectedLanguage,
+      upstreamStatusCode: result.upstreamStatusCode,
+    });
+
     return NextResponse.json(result);
   } catch (err) {
+    if (usage) {
+      await failPaidSttUsage({
+        usageId: usage.id,
+        startedAt: usage.startedAt,
+        error: err,
+        upstreamStatusCode: err instanceof OpenRouterSpeechError ? err.status : undefined,
+        providerRequestId: err instanceof OpenRouterSpeechError ? err.providerRequestId : undefined,
+      }).catch((trackingError) => {
+        console.error("[meeting] Failed to finalize STT usage:", trackingError);
+      });
+    }
+
     console.error("[meeting] Fast transcription error:", err);
     return NextResponse.json(
-      {
-        error: "Fast transcription failed",
-        segments: [],
-        spans: [],
-      },
+      { error: "Fast transcription failed", segments: [], spans: [] },
       { status: 500 },
     );
   }
