@@ -6,6 +6,7 @@ import { requireMeetingEditor } from "../sections/_shared";
 import { UNKNOWN_SPEAKER_NAME, type AttendanceSuggestion, type MeetingMinutes, type UpdateMeetingMinutesInput } from "@/lib/meeting/types";
 import { defaultMeetingDateAndTime } from "@/lib/meeting/minutesDefaults";
 import type { MeetingMinutes as PrismaMeetingMinutes, Meeting as PrismaMeeting } from "@prisma/client";
+import { buildRosterAttendanceDefaults } from "@/lib/meeting/bot/attendance";
 
 const normalizeName = (name: string) => name.trim().toLowerCase();
 
@@ -53,7 +54,18 @@ async function buildKnownPeople(meeting: PrismaMeeting): Promise<AttendanceSugge
 }
 
 async function buildResponse(meeting: PrismaMeeting, row: PrismaMeetingMinutes | null, timeZone: string | null): Promise<MeetingMinutes> {
-  const [attendanceSuggestions, knownPeople] = await Promise.all([buildAttendanceSuggestions(meeting), buildKnownPeople(meeting)]);
+  const [attendanceSuggestions, knownPeople, botSession] = await Promise.all([
+    buildAttendanceSuggestions(meeting),
+    buildKnownPeople(meeting),
+    prisma.meetingBotSession.findUnique({
+      where: { meetingId: meeting.id },
+      select: { participantNames: true },
+    }),
+  ]);
+  const attendanceDefaults = buildRosterAttendanceDefaults(
+    botSession?.participantNames ?? [],
+    knownPeople,
+  );
   if (row) {
     return {
       id: row.id,
@@ -70,6 +82,7 @@ async function buildResponse(meeting: PrismaMeeting, row: PrismaMeetingMinutes |
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       attendanceSuggestions,
+      attendanceDefaults,
       knownPeople,
     };
   }
@@ -90,6 +103,7 @@ async function buildResponse(meeting: PrismaMeeting, row: PrismaMeetingMinutes |
     createdAt: null,
     updatedAt: null,
     attendanceSuggestions,
+    attendanceDefaults,
     knownPeople,
   };
 }
