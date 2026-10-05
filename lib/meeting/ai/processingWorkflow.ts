@@ -22,6 +22,16 @@ function envModel(feature: MeetingProcessingFeature, kind: "PRIMARY" | "FALLBACK
   return process.env[featureKey]?.trim() || process.env[`MEETING_DIFY_${kind}_MODEL`]?.trim() || undefined;
 }
 
+export function getProcessingModelPolicy(feature: MeetingProcessingFeature): {
+  primaryModel?: string;
+  fallbackModel?: string;
+} {
+  return {
+    primaryModel: envModel(feature, "PRIMARY"),
+    fallbackModel: envModel(feature, "FALLBACK"),
+  };
+}
+
 export function getMeetingProcessingConfig(
   legacyKeyEnvNames: string[] = [],
   legacyUrlEnvNames: string[] = [],
@@ -44,8 +54,7 @@ export async function callProcessingWorkflow(options: ProcessingCallOptions): Pr
   const config = getMeetingProcessingConfig(options.legacyKeyEnvNames, options.legacyUrlEnvNames);
   if (!config) return null;
 
-  const primaryModel = envModel(options.feature, "PRIMARY");
-  const fallbackModel = envModel(options.feature, "FALLBACK");
+  const { primaryModel, fallbackModel } = getProcessingModelPolicy(options.feature);
 
   const primaryInputs = primaryModel
     ? { ...options.inputs, model_selector: primaryModel }
