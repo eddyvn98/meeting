@@ -7,6 +7,7 @@ import { buildSummaryCreateInput } from "@/lib/meeting/ai/buildSummaryCreateInpu
 import { correctTranscriptText } from "@/lib/meeting/glossary/applyGlossary";
 import { alignEvidenceSegmentIds } from "@/lib/meeting/ai/evidenceAlignment";
 import { remapSummaryEvidenceAfterTranscriptReplace } from "@/lib/meeting/ai/remapSummaryEvidence";
+import { inferRosterSpeakerMappings, parseSpeakerObservations } from "@/lib/meeting/bot/rosterMapping";
 
 interface IncomingSegment {
   start: number;
@@ -206,6 +207,52 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
       where: { meetingId: meeting.id },
       orderBy: { order: "asc" },
     });
+
+    if (isDiarizationUpdate) {
+      const [botSession, existingMappings] = await Promise.all([
+        tx.meetingBotSession.findUnique({
+          where: { meetingId: meeting.id },
+          select: { participantNames: true, speakerObservations: true },
+        }),
+        tx.speakerMapping.findMany({ where: { meetingId: meeting.id } }),
+      ]);
+      if (botSession) {
+        const inferredMappings = inferRosterSpeakerMappings({
+          segments: savedSegments.map((segment) => ({
+            speakerKey: segment.speakerKey,
+            startTimeMs: segment.startTimeMs,
+            endTimeMs: segment.endTimeMs,
+          })),
+          participantNames: botSession.participantNames,
+          observations: parseSpeakerObservations(botSession.speakerObservations),
+          existingMappings,
+        });
+        if (inferredMappings.length > 0) {
+          await Promise.all(
+            inferredMappings.map((mapping) =>
+              tx.speakerMapping.upsert({
+                where: {
+                  meetingId_speakerKey: {
+                    meetingId: meeting.id,
+                    speakerKey: mapping.speakerKey,
+                  },
+                },
+                create: {
+                  meetingId: meeting.id,
+                  speakerKey: mapping.speakerKey,
+                  displayName: mapping.displayName,
+                  updatedByEmail: email,
+                },
+                update: {
+                  displayName: mapping.displayName,
+                  updatedByEmail: email,
+                },
+              }),
+            ),
+          );
+        }
+      }
+    }
 
     if (isDiarizationUpdate && existingSummary) {
       await remapSummaryEvidenceAfterTranscriptReplace(
