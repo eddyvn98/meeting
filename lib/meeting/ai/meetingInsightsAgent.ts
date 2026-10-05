@@ -3,7 +3,7 @@
  *
  * Generates structured meeting insights (overview, topics, AI-chosen sections,
  * action items, blockers, suggested title) from transcript lines using
- * the shared CHAT_KEY Dify agent.
+ * the Meeting processing Dify workflow app.
  */
 
 import {
@@ -95,6 +95,7 @@ export async function generateMeetingInsights(options: {
       legacyKeyEnvNames: INSIGHTS_LEGACY_KEYS,
       legacyUrlEnvNames: INSIGHTS_LEGACY_URLS,
       signal: AbortSignal.timeout(35_000),
+      validateAnswer: (answer) => parseMeetingInsights(answer, chunkSegments.length) !== null,
       inputs: {
         task: "insights",
         meeting_title: meetingTitle,
