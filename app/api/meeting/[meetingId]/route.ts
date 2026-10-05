@@ -30,7 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: { meetingId: s
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const [speakers, speakerMappings, segments, bookmarks, summary] = await Promise.all([
+  const [speakers, speakerMappings, segments, bookmarks, summary, botSession] = await Promise.all([
     prisma.speaker.findMany({ where: { meetingId: meeting.id }, orderBy: { createdAt: "asc" } }),
     prisma.speakerMapping.findMany({ where: { meetingId: meeting.id } }),
     prisma.transcriptSegment.findMany({ where: { meetingId: meeting.id }, orderBy: { order: "asc" } }),
@@ -39,12 +39,17 @@ export async function GET(req: NextRequest, { params }: { params: { meetingId: s
       where: { meetingId: meeting.id },
       include: { topics: true, decisions: true, actionItems: true, blockers: true, openQuestions: true, sections: { orderBy: { order: "asc" } } },
     }),
+    prisma.meetingBotSession.findUnique({
+      where: { meetingId: meeting.id },
+      select: { participantNames: true },
+    }),
   ]);
 
   const mappingsByKey = new Map(speakerMappings.map((m) => [m.speakerKey, m.displayName]));
 
   const detail: MeetingDetail = {
     ...serializeMeeting(meeting),
+    participantNames: botSession?.participantNames ?? [],
     speakers: speakers.map(serializeSpeaker),
     speakerMappings: speakerMappings.map(serializeSpeakerMapping),
     transcriptSegments: segments.map((s) => serializeTranscriptSegment(s, mappingsByKey)),
