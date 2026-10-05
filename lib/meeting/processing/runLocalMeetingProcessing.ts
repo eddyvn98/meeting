@@ -44,6 +44,13 @@ export type ProcessingOutcome = { ok: true } | { ok: false; reason: string };
 
 const failed = (reason: string): ProcessingOutcome => ({ ok: false, reason });
 
+type DiarizationRunStatus = "pending" | "running" | "done" | "failed";
+
+function setDiarizationRunStatus(status: DiarizationRunStatus): void {
+  if (typeof window === "undefined") return;
+  (window as unknown as { __meetingDiarizationStatus?: DiarizationRunStatus }).__meetingDiarizationStatus = status;
+}
+
 /** Names the step that failed, so the message the user sees is not a bare
  *  browser error like "Failed to fetch". */
 async function inStep<T>(label: string, run: () => Promise<T>): Promise<T> {
@@ -93,6 +100,7 @@ export async function runLocalMeetingProcessing(
    *  stored `sttLanguage`. */
   sttLanguage = "vi",
 ): Promise<ProcessingOutcome> {
+  setDiarizationRunStatus("pending");
   try {
     const blob = await inStep("Couldn't download the recording", () =>
       withRetry(async () => {
@@ -270,6 +278,7 @@ async function enrichTranscriptWithDiarization(
   sttSegments: STTSegment[],
   diarize: () => Promise<{ spans: DiarizationSpan[]; centroids: SpeakerCentroid[] }>,
 ): Promise<void> {
+  setDiarizationRunStatus("running");
   try {
     const { spans, centroids } = await diarize();
     const speakerIndexes = assignSpeakerIndexes(
@@ -279,7 +288,9 @@ async function enrichTranscriptWithDiarization(
     const tagged: SpeakerTaggedSegment[] = sttSegments.map((s, i) => ({ ...s, speakerIndex: speakerIndexes[i] }));
     const utterances = mergeUtterances(tagged);
     if (utterances.length > 0) await saveTranscript(meetingId, utterances, centroids, false, true);
+    setDiarizationRunStatus("done");
   } catch (err) {
+    setDiarizationRunStatus("failed");
     console.warn("[meeting] Background diarization failed; keeping the initial transcript:", err instanceof Error ? err.message : String(err));
   }
 }
