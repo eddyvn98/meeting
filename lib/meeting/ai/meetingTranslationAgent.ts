@@ -58,7 +58,7 @@ export async function generateTranslations(
       callerEmail,
       legacyKeyEnvNames: TRANSLATION_LEGACY_KEYS,
       legacyUrlEnvNames: TRANSLATION_LEGACY_URLS,
-      signal: AbortSignal.timeout(20_000),
+      modelTimeoutMs: 20_000,
       inputs,
       validateAnswer: (answer) => parseTranslations(answer, chunkLines.length) !== null,
     });
