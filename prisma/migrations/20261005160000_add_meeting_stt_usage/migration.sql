@@ -37,3 +37,33 @@ ALTER TABLE "meeting_stt_usage"
 ADD CONSTRAINT "meeting_stt_usage_meetingId_fkey"
 FOREIGN KEY ("meetingId") REFERENCES "meetings"("id")
 ON DELETE SET NULL ON UPDATE CASCADE;
+
+
+CREATE TABLE "meeting_ai_usage" (
+    "id" TEXT NOT NULL,
+    "requestId" TEXT NOT NULL,
+    "userEmail" TEXT NOT NULL,
+    "provider" TEXT NOT NULL DEFAULT 'dify',
+    "category" TEXT NOT NULL,
+    "feature" TEXT NOT NULL,
+    "requestedModel" TEXT,
+    "providerModel" TEXT,
+    "inputTokens" INTEGER NOT NULL DEFAULT 0,
+    "outputTokens" INTEGER NOT NULL DEFAULT 0,
+    "totalTokens" INTEGER NOT NULL DEFAULT 0,
+    "totalPrice" DECIMAL(18,8),
+    "currency" TEXT,
+    "latencyMs" INTEGER,
+    "status" TEXT NOT NULL,
+    "providerRequestId" TEXT,
+    "workflowRunId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "meeting_ai_usage_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX "meeting_ai_usage_requestId_key" ON "meeting_ai_usage"("requestId");
+CREATE INDEX "meeting_ai_usage_userEmail_createdAt_idx" ON "meeting_ai_usage"("userEmail", "createdAt");
+CREATE INDEX "meeting_ai_usage_feature_createdAt_idx" ON "meeting_ai_usage"("feature", "createdAt");
+CREATE INDEX "meeting_ai_usage_category_createdAt_idx" ON "meeting_ai_usage"("category", "createdAt");
+CREATE INDEX "meeting_ai_usage_status_createdAt_idx" ON "meeting_ai_usage"("status", "createdAt");
