@@ -10,8 +10,8 @@ Current implementation and intended direction:
 - Microsoft Graph is **optional** and is used only to read a dedicated Outlook/Teams calendar mailbox and obtain meeting metadata/join URLs.
 - The project does **not** use Microsoft Graph Calling/Media APIs, `Calls.AccessMedia.All`, `Microsoft.Graph.Communications.Calls.Media`, or an Azure-hosted Teams media bot.
 - Audio, STT, translation, diarization, summaries, minutes, and action items stay on Meeting-owned infrastructure.
-- Current Teams participation is **anonymous**: Playwright fills the display name `Meeting STT Assistant` and joins through the browser.
-- The next authentication milestone is to keep the same browser/PulseAudio/STT pipeline but make the Teams browser join as an **authenticated participant account**.
+- The runner supports two Teams Web join modes: **anonymous** (existing behavior) and **authenticated** (saved Microsoft/Teams account session).
+- Authenticated mode keeps the same browser/PulseAudio/STT pipeline and changes only the participant identity used by Teams Web.
 
 ### Authentication rollout
 
@@ -19,7 +19,24 @@ For development, first validate the authenticated-participant flow with a **pers
 
 After that test is stable, production should use a dedicated organization-controlled account if tenant policy or operational reliability requires it.
 
-The browser authentication state should be persisted and reused by the runner (for example via Playwright storage state or a persistent browser profile) instead of automating username/password entry for every meeting. MFA or account-verification challenges must be completed interactively during setup and not bypassed.
+The authenticated flow is implemented with Playwright storage state. Username, password and MFA are never automated by the runner. Run the bootstrap once, complete Microsoft sign-in interactively, and the runner reuses the saved browser session.
+
+```bash
+pnpm meeting:bot:auth
+```
+
+The default state file is `.meeting-bot/teams-auth.json`, which is ignored by git. Then configure:
+
+```env
+MEETING_BOT_TEAMS_AUTH_MODE=authenticated
+MEETING_BOT_TEAMS_AUTH_STATE=.meeting-bot/teams-auth.json
+```
+
+If Microsoft expires or revokes the session, the bot fails with `TEAMS_AUTH_REQUIRED`; rerun `pnpm meeting:bot:auth`.
+
+For the first development test, a personal Microsoft/Teams account is acceptable. Production can later switch to a dedicated organization-controlled account without changing the downstream audio/STT architecture.
+
+Authenticated mode is currently limited to one concurrent meeting per saved account; the runner automatically clamps concurrency to 1. Supporting concurrent meetings with one authenticated identity should not be assumed.
 
 Target flow:
 
@@ -140,6 +157,8 @@ NEXTAUTH_URL=https://your-meeting-app.example.com
 MEETING_BOT_BASE_URL=https://your-meeting-app.example.com
 MEETING_BOT_RUNNER_TOKEN=...
 MEETING_BOT_TEAMS_DISPLAY_NAME=Meeting STT Assistant
+MEETING_BOT_TEAMS_AUTH_MODE=authenticated
+MEETING_BOT_TEAMS_AUTH_STATE=.meeting-bot/teams-auth.json
 MEETING_BOT_SCHEDULE_POLL_MS=15000
 MEETING_BOT_LOBBY_TIMEOUT_MS=900000
 MEETING_BOT_RECONNECT_TIMEOUT_MS=120000
@@ -159,6 +178,14 @@ Web application:
 pnpm build
 pnpm exec next start
 ```
+
+For authenticated Teams participation, bootstrap the Microsoft session once before starting the runner:
+
+```bash
+pnpm meeting:bot:auth
+```
+
+Complete sign-in and MFA manually in the opened browser, then press Enter in the terminal when Teams is signed in.
 
 Bot runner in a separate process:
 
@@ -224,6 +251,6 @@ A Teams custom app is also not required for this V1. It can later provide a wide
 
 ## Operational behavior
 
-The current bot joins Teams Web as a browser participant. Tenant meeting policies can place it in the lobby or block anonymous participants. A human participant may still need to admit the bot.
+The bot joins Teams Web as a browser participant. In `anonymous` mode it fills the configured display name. In `authenticated` mode it reuses the saved Microsoft account session; the visible participant name comes from that Teams account. Tenant meeting policies can still place external/authenticated users in the lobby, so a human participant may still need to admit the bot.
 
 The runner now distinguishes intentional removal/rejection from infrastructure interruptions, retries Teams/network/browser failures, watches for real audio signal, protects against late calendar joins and duplicate scheduling sources, and supports a short meeting-restart rejoin window. These safeguards reduce unattended failure, but the deployment still needs the real-tenant E2E checklist in `docs/meeting-bot-reliability.md` before production sign-off.
