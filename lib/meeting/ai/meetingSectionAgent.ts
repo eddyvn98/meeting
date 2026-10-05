@@ -46,7 +46,13 @@ export async function generateSectionItems(options: {
       isPartial,
       outputLanguage: options.outputLanguage,
     });
-    const raw = (await callChatAgent(query, options.callerEmail)) ?? (await callChatAgent(query, options.callerEmail));
+    const raw = await callChatAgent(
+      query,
+      options.callerEmail,
+      undefined,
+      AbortSignal.timeout(35_000),
+      "section_generate",
+    );
     if (raw === null) return null;
     return parseGeneratedItems(options.kind, raw, lines.map((l) => l.segmentId), `ai_${options.kind}_${stamp}_${chunkIndex}`);
   });
