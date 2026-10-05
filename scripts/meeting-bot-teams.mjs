@@ -36,7 +36,12 @@ export async function clickIfVisible(page, patterns) {
   return false;
 }
 
-export async function prepareTeamsPage(page, session, displayName) {
+export async function prepareTeamsPage(
+  page,
+  session,
+  displayName,
+  { authenticated = false } = {},
+) {
   if (page.isClosed()) throw codedError("TEAMS_PAGE_CLOSED", "Teams page is closed.");
   await page.goto(session.meetingUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
   if (isTeamsAuthUrl(page.url())) {
@@ -55,8 +60,26 @@ export async function prepareTeamsPage(page, session, displayName) {
   const nameInput = page.locator(
     'input[placeholder*="name" i], input[aria-label*="name" i], input:not([type]), input[type="text"]',
   ).first();
-  await nameInput.waitFor({ state: "visible", timeout: 30_000 }).catch(() => undefined);
-  if (await nameInput.isVisible().catch(() => false)) await nameInput.fill(displayName);
+  const joinButton = page.getByRole("button", {
+    name: /Join now|Tham gia ngay|^Join$|^Rejoin$|Tham gia lại/i,
+  }).first();
+
+  if (authenticated) {
+    await Promise.race([
+      nameInput.waitFor({ state: "visible", timeout: 15_000 }),
+      joinButton.waitFor({ state: "visible", timeout: 15_000 }),
+    ]).catch(() => undefined);
+
+    if (isTeamsAuthUrl(page.url()) || await nameInput.isVisible().catch(() => false)) {
+      throw codedError(
+        "TEAMS_AUTH_REQUIRED",
+        'Teams did not recognize the saved account session. Run "pnpm meeting:bot:auth" again.',
+      );
+    }
+  } else {
+    await nameInput.waitFor({ state: "visible", timeout: 30_000 }).catch(() => undefined);
+    if (await nameInput.isVisible().catch(() => false)) await nameInput.fill(displayName);
+  }
 
   await clickIfVisible(page, [/Join now/i, /Tham gia ngay/i, /^Join$/i, /^Rejoin$/i, /Tham gia lại/i]);
 }
