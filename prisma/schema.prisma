@@ -140,10 +140,46 @@ model Meeting {
   minutesTranslations MeetingMinutesTranslation[]
   minutesComments     MeetingMinutesComment[]
   notifications       MeetingNotification[]
+  sttUsage            MeetingSttUsage[]
 
   @@index([ownerEmail, createdAt])
   @@index([groupId])
   @@map("meetings")
+}
+
+model MeetingSttUsage {
+  id                 String    @id @default(cuid())
+  requestId          String    @unique
+  meetingId          String?
+  userEmail          String
+  provider           String
+  model              String
+  purpose            String
+  jobId              String?
+  chunkIndex         Int?
+  attempt            Int       @default(1)
+  sampleRate         Int
+  inputBytes         Int
+  audioDurationMs    Int
+  providerDurationMs Int?
+  status             String
+  latencyMs          Int?
+  upstreamStatusCode Int?
+  providerRequestId  String?
+  providerCostUsd    Decimal?  @db.Decimal(18, 8)
+  detectedLanguage   String?
+  errorMessage       String?   @db.Text
+  startedAt          DateTime  @default(now())
+  completedAt        DateTime?
+
+  meeting Meeting? @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+
+  @@index([userEmail, startedAt])
+  @@index([meetingId, startedAt])
+  @@index([purpose, startedAt])
+  @@index([status, startedAt])
+  @@index([jobId])
+  @@map("meeting_stt_usage")
 }
 
 model MeetingBotSchedule {
