@@ -19,6 +19,7 @@ export function isStopRejoinError(error) {
     "TEAMS_JOIN_REJECTED",
     "TEAMS_REMOVED",
     "TEAMS_ACCESS_DENIED",
+    "TEAMS_AUTH_REQUIRED",
     "TEAMS_INVALID_LINK",
   ].includes(errorCode(error));
 }
@@ -49,7 +50,7 @@ export function createTeamsRecovery({
         lastError = error;
         await closeTeams(next);
         const code = errorCode(error);
-        if (["TEAMS_JOIN_REJECTED", "TEAMS_REMOVED", "TEAMS_ACCESS_DENIED", "TEAMS_INVALID_LINK"].includes(code)) {
+        if (["TEAMS_JOIN_REJECTED", "TEAMS_REMOVED", "TEAMS_ACCESS_DENIED", "TEAMS_AUTH_REQUIRED", "TEAMS_INVALID_LINK"].includes(code)) {
           throw error;
         }
         await sleep(5_000);
@@ -92,7 +93,7 @@ export function createTeamsRecovery({
         if (await confirmSomeoneElseIsPresent(runtime.page)) return runtime;
       } catch (error) {
         const code = errorCode(error);
-        if (["TEAMS_JOIN_REJECTED", "TEAMS_REMOVED", "TEAMS_ACCESS_DENIED", "TEAMS_INVALID_LINK"].includes(code)) {
+        if (["TEAMS_JOIN_REJECTED", "TEAMS_REMOVED", "TEAMS_ACCESS_DENIED", "TEAMS_AUTH_REQUIRED", "TEAMS_INVALID_LINK"].includes(code)) {
           throw error;
         }
       }
