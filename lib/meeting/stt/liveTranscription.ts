@@ -152,6 +152,7 @@ export function startLiveTranscription(
         "Content-Type": "application/octet-stream",
         "x-sample-rate": String(sampleRate),
         "x-offset-sec": String(offsetSec),
+        "x-stt-purpose": "live",
       },
       body: pcmData,
       signal: AbortSignal.timeout(45_000),
