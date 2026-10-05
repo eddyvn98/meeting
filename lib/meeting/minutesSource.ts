@@ -11,14 +11,39 @@ import { parseSectionItems, type AttendanceSectionItem, type MinutesMatter } fro
 import { defaultMeetingDateAndTime } from "./minutesDefaults";
 import { parseMinutesDocContent, type MinutesDocContent, type MinutesTranslation } from "./minutesTranslation";
 import { labelForTranslateLang } from "./translateLanguages";
+import { buildRosterAttendanceDefaults } from "./bot/attendance";
 
 export async function loadOriginalMinutes(meeting: Meeting, timeZone: string | null): Promise<{ content: MinutesDocContent; updatedAt: Date }> {
-  const [row, summary] = await Promise.all([
+  const [row, summary, botSession] = await Promise.all([
     prisma.meetingMinutes.findUnique({ where: { meetingId: meeting.id } }),
     prisma.meetingSummary.findUnique({ where: { meetingId: meeting.id }, include: { sections: true } }),
+    prisma.meetingBotSession.findUnique({
+      where: { meetingId: meeting.id },
+      select: { participantNames: true },
+    }),
   ]);
   const attendanceSection = summary?.sections.find((s) => s.kind === "attendance");
   const mattersSection = summary?.sections.find((s) => s.kind === "minutes_table");
+
+  const participantNames = botSession?.participantNames ?? [];
+  const normalizedNames = participantNames.map((name) => name.trim().toLowerCase()).filter(Boolean);
+  const rememberedPeople =
+    normalizedNames.length > 0
+      ? await prisma.meetingPersonRole.findMany({
+          where: {
+            ownerEmail: meeting.ownerEmail.toLowerCase(),
+            normalizedName: { in: normalizedNames },
+          },
+        })
+      : [];
+  const rosterAttendance = buildRosterAttendanceDefaults(
+    participantNames,
+    rememberedPeople.map((person) => ({
+      name: person.displayName ?? person.normalizedName,
+      role: person.role || null,
+      organization: person.organization ?? null,
+    })),
+  );
 
   const defaults = defaultMeetingDateAndTime(meeting, timeZone);
   const header = row
@@ -47,7 +72,9 @@ export async function loadOriginalMinutes(meeting: Meeting, timeZone: string | n
   return {
     content: {
       header,
-      attendance: parseSectionItems("attendance", attendanceSection?.items) as AttendanceSectionItem[],
+      attendance: attendanceSection
+        ? (parseSectionItems("attendance", attendanceSection.items) as AttendanceSectionItem[])
+        : rosterAttendance,
       matters: parseSectionItems("minutes_table", mattersSection?.items) as MinutesMatter[],
     },
     updatedAt: stamps.length > 0 ? new Date(Math.max(...stamps.map((d) => d.getTime()))) : new Date(0),
