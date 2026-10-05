@@ -59,6 +59,7 @@ async function translateWithModel(
     config.key,
     config.url,
     AbortSignal.timeout(LIVE_MODEL_TIMEOUT_MS),
+    "translation",
   );
 }
 
