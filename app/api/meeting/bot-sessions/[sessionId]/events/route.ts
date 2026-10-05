@@ -4,6 +4,8 @@ import { isBotRunnerRequest, runnerId } from "../../_auth";
 import { MEETING_BOT_STATUSES, type MeetingBotEventInput } from "@/lib/meeting/bot/types";
 import { serializeMeetingBotSession } from "@/lib/meeting/bot/serialize";
 import { maybePruneTerminalBotSessions } from "@/lib/meeting/bot/pruneBotSessions";
+import { parseSpeakerObservations, sanitizeParticipantNames } from "@/lib/meeting/bot/rosterMapping";
+import type { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 
@@ -32,6 +34,17 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     return NextResponse.json(serializeMeetingBotSession(session));
   }
 
+  if (body.participantNames !== undefined && !Array.isArray(body.participantNames)) {
+    return NextResponse.json({ error: "participantNames must be an array." }, { status: 400 });
+  }
+  if (body.speakerObservations !== undefined && !Array.isArray(body.speakerObservations)) {
+    return NextResponse.json({ error: "speakerObservations must be an array." }, { status: 400 });
+  }
+  const participantNames =
+    body.participantNames === undefined ? undefined : sanitizeParticipantNames(body.participantNames);
+  const speakerObservations =
+    body.speakerObservations === undefined ? undefined : parseSpeakerObservations(body.speakerObservations);
+
   const meetingId = body.meetingId ?? session.meetingId;
   if (meetingId) {
     const meeting = await prisma.meeting.findUnique({ where: { id: meetingId }, select: { ownerEmail: true } });
@@ -49,6 +62,11 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
         status,
         runnerId: session.runnerId ?? runnerId(req),
         meetingId: meetingId ?? undefined,
+        participantNames,
+        speakerObservations:
+          speakerObservations === undefined
+            ? undefined
+            : (speakerObservations as unknown as Prisma.InputJsonValue),
         errorMessage:
           typeof body.errorMessage === "string"
             ? body.errorMessage.slice(0, 4000)
