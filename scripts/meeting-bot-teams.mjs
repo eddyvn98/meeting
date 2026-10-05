@@ -1,5 +1,18 @@
 import { detectTeamsPageState } from "./meeting-bot-lifecycle.mjs";
 
+export function isTeamsAuthUrl(value) {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return [
+      "login.microsoftonline.com",
+      "login.live.com",
+      "account.live.com",
+    ].includes(host);
+  } catch {
+    return false;
+  }
+}
+
 export function codedError(code, message) {
   const error = new Error(message);
   error.code = code;
@@ -26,6 +39,12 @@ export async function clickIfVisible(page, patterns) {
 export async function prepareTeamsPage(page, session, displayName) {
   if (page.isClosed()) throw codedError("TEAMS_PAGE_CLOSED", "Teams page is closed.");
   await page.goto(session.meetingUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  if (isTeamsAuthUrl(page.url())) {
+    throw codedError(
+      "TEAMS_AUTH_REQUIRED",
+      'The saved Microsoft/Teams session is missing or expired. Run "pnpm meeting:bot:auth" again.',
+    );
+  }
   await clickIfVisible(page, [
     /Continue on this browser/i,
     /Use web app/i,
@@ -51,6 +70,7 @@ export async function teamsJoined(page) {
 
 export async function readTeamsPage(page) {
   if (page.isClosed()) return { state: "PAGE_CLOSED", body: "" };
+  if (isTeamsAuthUrl(page.url())) return { state: "AUTH_REQUIRED", body: "" };
   const body = await page.locator("body").innerText().catch(() => "");
   const state = detectTeamsPageState(body);
   if (state) return { state, body };
@@ -78,6 +98,12 @@ export async function waitForTeamsJoin(page, {
     }
     if (snapshot.state === "REMOVED") {
       throw codedError("TEAMS_REMOVED", "The bot was removed from the Teams meeting.");
+    }
+    if (snapshot.state === "AUTH_REQUIRED") {
+      throw codedError(
+        "TEAMS_AUTH_REQUIRED",
+        'The saved Microsoft/Teams session is missing or expired. Run "pnpm meeting:bot:auth" again.',
+      );
     }
     if (snapshot.state === "ACCESS_DENIED") {
       throw codedError("TEAMS_ACCESS_DENIED", "Teams policy or permissions do not allow this bot to join.");
