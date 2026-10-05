@@ -44,8 +44,9 @@ CREATE TABLE "meeting_ai_usage" (
     "requestId" TEXT NOT NULL,
     "userEmail" TEXT NOT NULL,
     "provider" TEXT NOT NULL DEFAULT 'dify',
-    "category" TEXT NOT NULL,
+    "app" TEXT NOT NULL,
     "feature" TEXT NOT NULL,
+    "attempt" INTEGER NOT NULL DEFAULT 1,
     "requestedModel" TEXT,
     "providerModel" TEXT,
     "inputTokens" INTEGER NOT NULL DEFAULT 0,
@@ -54,9 +55,11 @@ CREATE TABLE "meeting_ai_usage" (
     "totalPrice" DECIMAL(18,8),
     "currency" TEXT,
     "latencyMs" INTEGER,
+    "httpStatus" INTEGER,
     "status" TEXT NOT NULL,
     "providerRequestId" TEXT,
     "workflowRunId" TEXT,
+    "errorMessage" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "meeting_ai_usage_pkey" PRIMARY KEY ("id")
@@ -64,6 +67,7 @@ CREATE TABLE "meeting_ai_usage" (
 
 CREATE UNIQUE INDEX "meeting_ai_usage_requestId_key" ON "meeting_ai_usage"("requestId");
 CREATE INDEX "meeting_ai_usage_userEmail_createdAt_idx" ON "meeting_ai_usage"("userEmail", "createdAt");
+CREATE INDEX "meeting_ai_usage_app_createdAt_idx" ON "meeting_ai_usage"("app", "createdAt");
 CREATE INDEX "meeting_ai_usage_feature_createdAt_idx" ON "meeting_ai_usage"("feature", "createdAt");
-CREATE INDEX "meeting_ai_usage_category_createdAt_idx" ON "meeting_ai_usage"("category", "createdAt");
+CREATE INDEX "meeting_ai_usage_providerModel_createdAt_idx" ON "meeting_ai_usage"("providerModel", "createdAt");
 CREATE INDEX "meeting_ai_usage_status_createdAt_idx" ON "meeting_ai_usage"("status", "createdAt");
