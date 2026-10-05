@@ -176,6 +176,13 @@ model MeetingBotSession {
   status          MeetingBotStatus @default(REQUESTED)
   runnerId        String?
   meetingId       String?          @unique
+  /// Union of real participant display names observed in the Teams roster
+  /// during this bot session. The bot/self entry is excluded.
+  participantNames String[]        @default([])
+  /// Best-effort active-speaker samples captured from Teams Web, stored as
+  /// [{ atMs, names[] }]. Used only to map diarized speaker_N labels to roster
+  /// names when confidence is high; never treated as transcript text.
+  speakerObservations Json?
   lastHeartbeatAt DateTime?
   errorMessage    String?          @db.Text
   requestedAt     DateTime         @default(now())
