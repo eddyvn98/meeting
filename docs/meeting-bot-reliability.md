@@ -27,6 +27,7 @@ Any unrecoverable infrastructure failure may end at FAILED.
 | Meeting rescheduled | Old pending occurrence is removed/stopped; new occurrence is queued. |
 | Lobby waits a long time | Bot waits up to MEETING_BOT_LOBBY_TIMEOUT_MS, then fails cleanly. |
 | Lobby request rejected | Bot ends without retrying because rejection is intentional. |
+| Saved Teams login expired/revoked | Session fails fast with `TEAMS_AUTH_REQUIRED`; rerun `pnpm meeting:bot:auth` before retrying. |
 | Bot removed/kicked during capture | Bot does not rejoin; existing recording is finalized. |
 | Organizer ends meeting | Recorder pauses and a short rejoin window starts. |
 | Meeting restarts inside rejoin window | Bot rejoins only after another participant is detected, then recording resumes. |
