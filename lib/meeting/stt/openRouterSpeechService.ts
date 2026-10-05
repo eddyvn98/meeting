@@ -16,6 +16,20 @@ export interface OpenRouterTranscribeResult {
   spans: DiarizationSpan[];
   detectedLanguage?: string;
   rawDurationMs?: number;
+  upstreamStatusCode: number;
+  providerRequestId?: string;
+  providerCostUsd?: number;
+}
+
+export class OpenRouterSpeechError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly providerRequestId?: string,
+  ) {
+    super(message);
+    this.name = "OpenRouterSpeechError";
+  }
 }
 
 export function getOpenRouterSpeechConfig(): OpenRouterSpeechConfig | null {
@@ -77,17 +91,26 @@ export async function transcribeChunkWithOpenRouter(
     signal,
   });
 
+  const providerRequestId =
+    response.headers.get("x-request-id")
+    ?? response.headers.get("x-openrouter-request-id")
+    ?? undefined;
+
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     console.error(`[meeting] OpenRouter MAI transcription failed (${response.status}): ${detail}`);
-    throw new Error(`OpenRouter MAI transcription failed (${response.status})`);
+    throw new OpenRouterSpeechError(
+      `OpenRouter MAI transcription failed (${response.status})`,
+      response.status,
+      providerRequestId,
+    );
   }
 
   const data = (await response.json()) as {
     text?: string;
     language?: string;
     duration?: number;
-    usage?: { seconds?: number };
+    usage?: { seconds?: number; cost?: number };
     segments?: Array<{ start?: number; end?: number; text?: string; speaker?: number | string }>;
   };
   const durationSec = data.duration || data.usage?.seconds || Math.max(1, pcm.length / (sampleRate * 2));
@@ -125,5 +148,8 @@ export async function transcribeChunkWithOpenRouter(
     spans,
     detectedLanguage: data.language,
     rawDurationMs: Math.round(durationSec * 1000),
+    upstreamStatusCode: response.status,
+    providerRequestId,
+    providerCostUsd: typeof data.usage?.cost === "number" ? data.usage.cost : undefined,
   };
 }
