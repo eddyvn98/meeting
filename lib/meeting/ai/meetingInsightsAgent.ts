@@ -3,7 +3,7 @@
  *
  * Generates structured meeting insights (overview, topics, AI-chosen sections,
  * action items, blockers, suggested title) from transcript lines using
- * the shared CHAT_KEY Dify agent.
+ * the Meeting processing Dify workflow app.
  */
 
 import {
@@ -16,9 +16,8 @@ import {
   type ParsedSection,
   mergeParsedSections,
 } from "./meetingInsightsParser";
-import { describeSectionKindsForPrompt } from "../sectionGeneration";
 import { chunkByCharBudget, runWithConcurrency } from "./batchLines";
-import { callChatAgent, callWorkflowApp, resolveWorkflowConfig } from "./difyClient";
+import { callProcessingWorkflow, type MeetingProcessingFeature } from "./processingWorkflow";
 
 export interface MeetingAgentTranscriptLine {
   speaker: string;
@@ -28,39 +27,8 @@ export interface MeetingAgentTranscriptLine {
 
 const MAX_TRANSCRIPT_CHARS = 12_000;
 const MAX_CONCURRENT_BATCHES = 4;
-
-function buildInsightsQuery(
-  meetingTitle: string,
-  segments: MeetingAgentTranscriptLine[],
-  isPartial: boolean,
-  outputLanguage?: string,
-): string {
-  const numbered = segments.map((s, i) => `[${i}] [${s.speaker}] ${s.text}`).join("\n");
-  const partialNote = isPartial
-    ? ` This is one chunk of a longer meeting transcript — only analyze what's shown below, do not assume anything about parts you can't see.`
-    : "";
-
-  return [
-    `Analyze this meeting transcript (titled "${meetingTitle}").${partialNote} Each line is prefixed with its 0-based index in brackets, e.g. "[3]".`,
-    `Reply with ONLY a single JSON object (no markdown fence, no prose before or after) matching exactly this shape:`,
-    `{"overview": "2-4 plain sentences summarizing what was discussed and any conclusions",`,
-    ` "suggestedTitle": "3-6 word descriptive title for this meeting based on its actual content, or null if the transcript is too short/unclear/generic (e.g. small talk, a mic test, silence) to title confidently",`,
-    ` "topics": [{"title": "short topic name", "evidenceIndex": 0}],`,
-    ` "sections": [{"kind": "one kind from the list below", "title": "short section title", "items": [ ...items in that kind's shape... ]}],`,
-    ` "minutes": [{"title": "short name of the matter/topic discussed", "rows": [{"discussion": ["bullet point of what was discussed"], "actions": [{"text": "what needs doing", "duration": "e.g. \\"2 weeks\\" or null", "deadline": "e.g. \\"2026-10-01\\" or null", "ongoing": false}], "responsible": ["person name"], "evidenceIndex": 0}]}]}`,
-    `"sections" is the set of Overview cards for THIS meeting. YOU choose which ones to include, based on what was actually discussed — include only sections the content genuinely supports (typically 2 to 6, at most 8), in the order most useful to a reader, each kind at most once. Do not add a section just to fill space, and do not force any particular section: a brainstorm may need only "key_points" and "open_questions"; a review may need "feedback" and "actions"; a comparison of alternatives should use "options_compare"; a question-and-answer session should use "qa". Give each section a short, specific "title" (you may adapt the default name to the content). Available kinds and their item shapes:`,
-    describeSectionKindsForPrompt(),
-    `Keep each section to at most 8 items, grounded only in the transcript.`,
-    `Use "evidenceIndex" to cite the transcript line index that best supports each topic, section item and minutes row. Provide an empty array [] for "topics", "sections" or "minutes" if there is nothing for them — do not invent items.`,
-    `"minutes" is a formal Minutes-of-Meeting matters table: group the discussion into a handful of numbered matters (topics), each with one or more rows of what was discussed, what action(s) it produced, and who is responsible. Reuse names/topics already used elsewhere in your response. Leave "minutes": [] if the transcript is too short/unstructured to produce a meaningful matters table.`,
-    outputLanguage
-      ? `Language requirement: Write EVERY text value in your JSON response ("overview", "suggestedTitle", "topics" titles, every "sections" title and item text, and every "minutes" title/discussion/action text) in ${outputLanguage}, regardless of the language the transcript is spoken in — translate the content into ${outputLanguage} where needed. Person names in "minutes" "responsible" stay as spoken, never translated.`
-      : `Language requirement: Detect the predominant language used in the provided transcript lines. All text in your JSON response ("overview", "suggestedTitle", "topics" titles, every "sections" title and item text, and every "minutes" title/discussion/action text) MUST be written in that SAME predominant language as the transcript (e.g. Vietnamese transcript -> natural Vietnamese; English transcript -> English; Japanese transcript -> Japanese). Never default to or translate into English when the transcript is primarily in another language. Person names in "minutes" "responsible" stay as spoken, never translated.`,
-    "",
-    "Transcript:",
-    numbered,
-  ].join("\n");
-}
+const INSIGHTS_LEGACY_KEYS = ["MEETING_INSIGHTS_WORKFLOW_KEY", "INSIGHTS_WORKFLOW_KEY", "DIFY_INSIGHTS_API_KEY"];
+const INSIGHTS_LEGACY_URLS = ["MEETING_INSIGHTS_WORKFLOW_URL", "INSIGHTS_WORKFLOW_URL", "DIFY_INSIGHTS_API_URL"];
 
 function dedupeAndCap<T>(items: T[], getKey: (item: T) => string, max = 15): T[] {
   const seen = new Set<string>();
@@ -79,7 +47,8 @@ async function consolidateOverviews(
   meetingTitle: string,
   overviews: string[],
   callerEmail: string,
-  outputLanguage?: string,
+  outputLanguage: string | undefined,
+  usageFeature: MeetingProcessingFeature,
 ): Promise<string> {
   const query = [
     `These are separate summaries of consecutive parts of one meeting (titled "${meetingTitle}"), in chronological order:`,
@@ -88,15 +57,19 @@ async function consolidateOverviews(
     "",
     `Write ONE 2-4 sentence overview of the WHOLE meeting that reads as a single coherent summary, not a list of parts. ${outputLanguage ? `Write it in ${outputLanguage}.` : "Write it in the same predominant language as the input summaries above."} Reply with ONLY that prose, no preamble.`,
   ].join("\n");
-  const raw = await callChatAgent(query, callerEmail);
+  const raw = await callProcessingWorkflow({
+    feature: usageFeature,
+    callerEmail,
+    legacyKeyEnvNames: INSIGHTS_LEGACY_KEYS,
+    legacyUrlEnvNames: INSIGHTS_LEGACY_URLS,
+    inputs: {
+      task: "consolidate_overviews",
+      meeting_title: meetingTitle,
+      overviews_json: JSON.stringify(overviews),
+      output_language: outputLanguage ?? "",
+    },
+  });
   return raw?.trim() || overviews.join("\n\n");
-}
-
-function getInsightsWorkflowConfig(): { key: string; url: string } | null {
-  return resolveWorkflowConfig(
-    ["MEETING_AI_KEY", "MEETING_INSIGHTS_WORKFLOW_KEY", "INSIGHTS_WORKFLOW_KEY", "DIFY_INSIGHTS_API_KEY"],
-    ["MEETING_AI_URL", "MEETING_INSIGHTS_WORKFLOW_URL", "INSIGHTS_WORKFLOW_URL", "DIFY_INSIGHTS_API_URL"],
-  );
 }
 
 export async function generateMeetingInsights(options: {
@@ -106,45 +79,30 @@ export async function generateMeetingInsights(options: {
   /** Human-readable language name (e.g. "Vietnamese") the generated text
    *  must be written in; omit to follow the transcript's own language. */
   outputLanguage?: string;
+  /** Usage/fallback policy label for callers such as summary or minutes. */
+  usageFeature?: "insights" | "summary" | "minutes";
 }): Promise<ParsedMeetingInsights | null> {
   const { transcript, meetingTitle, callerEmail, outputLanguage } = options;
+  const usageFeature = options.usageFeature ?? "insights";
   if (transcript.length === 0) return null;
 
   const chunks = chunkByCharBudget(transcript, (line) => `[${line.speaker}] ${line.text}`, MAX_TRANSCRIPT_CHARS);
-  const isPartial = chunks.length > 1;
-  const wfConfig = getInsightsWorkflowConfig();
-
   const perChunk = await runWithConcurrency(chunks, MAX_CONCURRENT_BATCHES, async (chunkSegments) => {
-    let raw: string | null = null;
-
-    if (wfConfig) {
-      try {
-        const numbered = chunkSegments.map((s, i) => `[${i}] [${s.speaker}] ${s.text}`).join("\n");
-        raw = await callWorkflowApp(
-          {
-            task: "insights",
-            meeting_title: meetingTitle,
-            transcript: numbered,
-            output_language: outputLanguage ?? "",
-          },
-          callerEmail,
-          wfConfig.key,
-          wfConfig.url,
-          AbortSignal.timeout(35_000),
-        );
-      } catch (err) {
-        console.warn("[meeting] Fast insights workflow failed, falling back to chat agent:", err);
-      }
-    }
-
-    if (!raw) {
-      const query = buildInsightsQuery(meetingTitle, chunkSegments, isPartial, outputLanguage);
-      raw = await callChatAgent(query, callerEmail);
-      if (!raw) {
-        // Retry once on transient upstream failure
-        raw = await callChatAgent(query, callerEmail);
-      }
-    }
+    const numbered = chunkSegments.map((segment, i) => `[${i}] [${segment.speaker}] ${segment.text}`).join("\n");
+    const raw = await callProcessingWorkflow({
+      feature: usageFeature,
+      callerEmail,
+      legacyKeyEnvNames: INSIGHTS_LEGACY_KEYS,
+      legacyUrlEnvNames: INSIGHTS_LEGACY_URLS,
+      modelTimeoutMs: 35_000,
+      validateAnswer: (answer) => parseMeetingInsights(answer, chunkSegments.length) !== null,
+      inputs: {
+        task: "insights",
+        meeting_title: meetingTitle,
+        transcript: numbered,
+        output_language: outputLanguage ?? "",
+      },
+    });
 
     return raw ? parseMeetingInsights(raw, chunkSegments.length) : null;
   });
@@ -193,7 +151,7 @@ export async function generateMeetingInsights(options: {
     return null;
   }
 
-  const overview = merged.overviews.length <= 1 ? (merged.overviews[0] ?? "") : await consolidateOverviews(meetingTitle, merged.overviews, callerEmail, outputLanguage);
+  const overview = merged.overviews.length <= 1 ? (merged.overviews[0] ?? "") : await consolidateOverviews(meetingTitle, merged.overviews, callerEmail, outputLanguage, usageFeature);
 
   return {
     overview,

@@ -1,14 +1,12 @@
 /**
  * lib/meeting/ai/difyMeetingAgent.ts
  *
- * Facade for Meeting AI features backed by the shared CHAT_KEY Dify agent:
- *   - askMeetingAgent: the "Ask this meeting" tab (ask/route.ts).
- *   - generateMeetingInsights: the Overview summary + Topics/Decisions/ActionItems/Blockers.
- *   - generateTranslations: per-segment translation for the Transcript tab.
- *   - callChatAgent: low-level blocking Dify HTTP dispatcher.
+ * Facade for Meeting AI features.
+ * Conversational Q&A uses the dedicated CHAT_KEY Dify app; processing
+ * features are exported from their own processing-workflow modules.
  */
 
-import { callChatAgent, callWorkflowApp, extractAnswer, resolveWorkflowConfig } from "./difyClient";
+import { callChatAgent, callWorkflowApp, extractAnswer } from "./difyClient";
 import {
   generateMeetingInsights,
   type MeetingAgentTranscriptLine,
@@ -88,13 +86,6 @@ function buildTranscriptBlock(lines: MeetingAgentTranscriptLine[], keywords: str
   return `${note}\n${selected.map(formatLine).join("\n")}`;
 }
 
-function getMeetingWorkflowConfig(): { key: string; url: string } | null {
-  return resolveWorkflowConfig(
-    ["MEETING_AI_KEY", "MEETING_ASK_WORKFLOW_KEY", "DIFY_MEETING_API_KEY"],
-    ["MEETING_AI_URL", "MEETING_ASK_WORKFLOW_URL", "DIFY_MEETING_API_URL"],
-  );
-}
-
 export async function askMeetingAgent(options: {
   meetingId: string;
   meetingTitle: string;
@@ -119,36 +110,17 @@ export async function askMeetingAgent(options: {
       : "";
   const glossaryBlock = options.glossaryBlock ? `\n\n${options.glossaryBlock}` : "";
 
-  const wfConfig = getMeetingWorkflowConfig();
-  let answer: string | null = null;
+  const query = transcriptBlock
+    ? `You are answering questions about a meeting titled "${options.meetingTitle}" in an ongoing conversation. Use ONLY the transcript below as source of truth; if the answer isn't in it, say so explicitly instead of guessing. Each transcript line starts with its timestamp as [MM:SS] — use those to answer questions about a specific time/moment in the meeting.${glossaryBlock}\n\nTranscript:\n${transcriptBlock}${historyBlock}\n\nQuestion: ${options.question}`
+    : `The meeting titled "${options.meetingTitle}" has no transcript yet. Politely say there is nothing to answer from yet.\n\nQuestion: ${options.question}`;
 
-  if (wfConfig && transcriptBlock) {
-    try {
-      const fullQuestion = options.question + (historyBlock ? `\n\nContext:${historyBlock}` : "") + (glossaryBlock ? `\n\n${glossaryBlock}` : "");
-      answer = await callWorkflowApp(
-        {
-          task: "ask",
-          meeting_title: options.meetingTitle,
-          text: fullQuestion,
-          transcript: transcriptBlock,
-        },
-        options.callerEmail,
-        wfConfig.key,
-        wfConfig.url,
-        AbortSignal.timeout(25_000),
-      );
-    } catch (err) {
-      console.warn("[meeting] Fast meeting ask workflow failed, falling back to chat agent:", err);
-    }
-  }
-
-  if (!answer) {
-    const query = transcriptBlock
-      ? `You are answering questions about a meeting titled "${options.meetingTitle}" in an ongoing conversation. Use ONLY the transcript below as source of truth; if the answer isn't in it, say so explicitly instead of guessing. Each transcript line starts with its timestamp as [MM:SS] — use those to answer questions about a specific time/moment in the meeting.${glossaryBlock}\n\nTranscript:\n${transcriptBlock}${historyBlock}\n\nQuestion: ${options.question}`
-      : `The meeting titled "${options.meetingTitle}" has no transcript yet. Politely say there is nothing to answer from yet.\n\nQuestion: ${options.question}`;
-
-    answer = await callChatAgent(query, options.callerEmail);
-  }
+  const answer = await callChatAgent(
+    query,
+    options.callerEmail,
+    undefined,
+    AbortSignal.timeout(25_000),
+    "ask_meeting",
+  );
 
   return answer ? { answer } : null;
 }

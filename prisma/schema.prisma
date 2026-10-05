@@ -140,10 +140,77 @@ model Meeting {
   minutesTranslations MeetingMinutesTranslation[]
   minutesComments     MeetingMinutesComment[]
   notifications       MeetingNotification[]
+  sttUsage            MeetingSttUsage[]
 
   @@index([ownerEmail, createdAt])
   @@index([groupId])
   @@map("meetings")
+}
+
+model MeetingSttUsage {
+  id                 String    @id @default(cuid())
+  requestId          String    @unique
+  meetingId          String?
+  userEmail          String
+  provider           String
+  model              String
+  purpose            String
+  jobId              String?
+  chunkIndex         Int?
+  attempt            Int       @default(1)
+  sampleRate         Int
+  inputBytes         Int
+  audioDurationMs    Int
+  providerDurationMs Int?
+  status             String
+  latencyMs          Int?
+  upstreamStatusCode Int?
+  providerRequestId  String?
+  providerCostUsd    Decimal?  @db.Decimal(18, 8)
+  detectedLanguage   String?
+  errorMessage       String?   @db.Text
+  startedAt          DateTime  @default(now())
+  completedAt        DateTime?
+
+  meeting Meeting? @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+
+  @@index([userEmail, startedAt])
+  @@index([meetingId, startedAt])
+  @@index([purpose, startedAt])
+  @@index([status, startedAt])
+  @@index([jobId])
+  @@map("meeting_stt_usage")
+}
+
+model MeetingAiUsage {
+  id                String    @id @default(cuid())
+  requestId         String    @unique
+  userEmail         String
+  provider          String    @default("dify")
+  app               String
+  feature           String
+  attempt           Int       @default(1)
+  requestedModel    String?
+  providerModel     String?
+  inputTokens       Int       @default(0)
+  outputTokens      Int       @default(0)
+  totalTokens       Int       @default(0)
+  totalPrice        Decimal?  @db.Decimal(18, 8)
+  currency          String?
+  latencyMs         Int?
+  httpStatus        Int?
+  status            String
+  providerRequestId String?
+  workflowRunId     String?
+  errorMessage      String?   @db.Text
+  createdAt         DateTime  @default(now())
+
+  @@index([userEmail, createdAt])
+  @@index([app, createdAt])
+  @@index([feature, createdAt])
+  @@index([providerModel, createdAt])
+  @@index([status, createdAt])
+  @@map("meeting_ai_usage")
 }
 
 model MeetingBotSchedule {

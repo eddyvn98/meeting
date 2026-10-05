@@ -67,6 +67,7 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     transcript: segments.map((s) => ({ speaker: s.speakerKey, text: s.textEn ?? s.textVi ?? "" })),
     callerEmail: auth.email,
     outputLanguage,
+    usageFeature: "minutes",
   });
 
   const items = buildMinutesTableItems(insights?.minutes ?? [], segments.map((s) => s.id));

@@ -49,6 +49,7 @@ export async function runFastServerTranscription(
   let completedCount = 0;
 
   const indices = Array.from({ length: chunkCount }, (_, i) => i);
+  const usageJobId = globalThis.crypto.randomUUID();
 
   const runWorker = async () => {
     while (indices.length > 0) {
@@ -61,7 +62,7 @@ export async function runFastServerTranscription(
       const pcmData = encodeFloat32AsInt16Pcm(slice);
 
       try {
-        const data = await requestWindow(meetingId, pcmData, sampleRate, offsetSec, attempts, i);
+        const data = await requestWindow(meetingId, pcmData, sampleRate, offsetSec, attempts, i, usageJobId);
         if (data.segments) allSegments.push(...data.segments);
         if (data.spans) allSpans.push(...data.spans);
       } catch (chunkErr) {
@@ -103,6 +104,7 @@ async function requestWindow(
   offsetSec: number,
   attempts: number,
   windowIndex: number,
+  usageJobId: string,
 ): Promise<WindowResponse> {
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt++) {
@@ -113,6 +115,10 @@ async function requestWindow(
           "Content-Type": "application/octet-stream",
           "x-sample-rate": String(sampleRate),
           "x-offset-sec": String(offsetSec),
+          "x-stt-purpose": "final",
+          "x-stt-job-id": usageJobId,
+          "x-stt-chunk-index": String(windowIndex),
+          "x-stt-attempt": String(attempt + 1),
         },
         body: pcmData,
       });

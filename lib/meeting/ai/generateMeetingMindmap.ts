@@ -127,7 +127,13 @@ export async function generateMeetingMindmap(options: {
     return null;
   }
 
-  const raw = await callChatAgent(buildQuery(meetingTitle, summary), callerEmail);
+  const raw = await callChatAgent(
+    buildQuery(meetingTitle, summary),
+    callerEmail,
+    undefined,
+    AbortSignal.timeout(35_000),
+    "mindmap",
+  );
   if (!raw) return null;
 
   const parsed = extractJson(raw);

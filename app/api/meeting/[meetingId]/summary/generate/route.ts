@@ -61,6 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     })),
     callerEmail: auth.email,
     outputLanguage: language.label,
+    usageFeature: "summary",
   });
 
   if (!insights) {

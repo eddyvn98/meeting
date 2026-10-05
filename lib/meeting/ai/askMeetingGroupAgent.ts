@@ -58,6 +58,12 @@ export async function askMeetingGroupAgent(options: {
 
   const query = `You are answering questions about a GROUP of related meetings, filed together under the folder "${options.groupName}", in an ongoing conversation. Below are excerpts from ${meetingBlocks.length} meeting(s) in this folder, each under its own "### Meeting" heading — treat them as separate meetings and say which meeting(s) each part of your answer comes from. Use ONLY the excerpts below as source of truth; if the answer isn't in them, say so explicitly instead of guessing.${glossaryBlock}\n\n${meetingBlocks.join("\n\n")}${historyBlock}\n\nQuestion: ${options.question}`;
 
-  const answer = await callChatAgent(query, options.callerEmail);
+  const answer = await callChatAgent(
+    query,
+    options.callerEmail,
+    undefined,
+    AbortSignal.timeout(25_000),
+    "ask_meeting_group",
+  );
   return answer ? { answer } : null;
 }
