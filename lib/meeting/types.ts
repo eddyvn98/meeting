@@ -228,6 +228,10 @@ export interface MeetingSummary {
 /** GET /api/meeting/[meetingId] response — everything the Meeting Result
  *  screen (Overview / Transcript / Ask tabs) needs in one fetch. */
 export interface MeetingDetail extends Meeting {
+  /** Real display names observed in the Teams roster during an automated bot
+   *  session. Empty for manual uploads/recordings or when roster capture was
+   *  unavailable. The bot/self entry is excluded. */
+  participantNames: string[];
   transcriptSegments: TranscriptSegment[];
   speakers: Speaker[];
   speakerMappings: SpeakerMapping[];
