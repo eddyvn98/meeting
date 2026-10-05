@@ -2,6 +2,39 @@
 
 ## Goal
 
+## Architecture decision: browser participant, not Graph Media Bot
+
+Current implementation and intended direction:
+
+- The existing runner joins **Teams Web through Playwright** and captures the Teams client's audio through **Linux PulseAudio**.
+- Microsoft Graph is **optional** and is used only to read a dedicated Outlook/Teams calendar mailbox and obtain meeting metadata/join URLs.
+- The project does **not** use Microsoft Graph Calling/Media APIs, `Calls.AccessMedia.All`, `Microsoft.Graph.Communications.Calls.Media`, or an Azure-hosted Teams media bot.
+- Audio, STT, translation, diarization, summaries, minutes, and action items stay on Meeting-owned infrastructure.
+- Current Teams participation is **anonymous**: Playwright fills the display name `Meeting STT Assistant` and joins through the browser.
+- The next authentication milestone is to keep the same browser/PulseAudio/STT pipeline but make the Teams browser join as an **authenticated participant account**.
+
+### Authentication rollout
+
+For development, first validate the authenticated-participant flow with a **personal Microsoft/Teams account**. The purpose is to prove persistent login, account selection, lobby behavior, reconnect/rejoin, and audio capture without changing the downstream recorder/STT pipeline.
+
+After that test is stable, production should use a dedicated organization-controlled account if tenant policy or operational reliability requires it.
+
+The browser authentication state should be persisted and reused by the runner (for example via Playwright storage state or a persistent browser profile) instead of automating username/password entry for every meeting. MFA or account-verification challenges must be completed interactively during setup and not bypassed.
+
+Target flow:
+
+```text
+Authenticated Teams account
+    -> Teams Web participant
+    -> PulseAudio virtual sink/source
+    -> Meeting recorder browser
+    -> chunk upload + live/final STT
+    -> translation / diarization / AI processing
+```
+
+This replaces only the anonymous-join layer. The existing PulseAudio, recorder, STT, processing, and recovery architecture should remain unchanged.
+
+
 Run the complete Meeting workflow without requiring a Teams custom app or Microsoft Graph calendar access:
 
 1. Paste a Teams join link or the full meeting invitation into the Meeting web app.
