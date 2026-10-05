@@ -1,5 +1,6 @@
 import type { MeetingBotSession as PrismaMeetingBotSession } from "@prisma/client";
 import type { MeetingBotSession } from "./types";
+import { parseSpeakerObservations, sanitizeParticipantNames } from "./rosterMapping";
 
 export function serializeMeetingBotSession(row: PrismaMeetingBotSession): MeetingBotSession {
   return {
@@ -13,6 +14,8 @@ export function serializeMeetingBotSession(row: PrismaMeetingBotSession): Meetin
     status: row.status,
     runnerId: row.runnerId,
     meetingId: row.meetingId,
+    participantNames: sanitizeParticipantNames(row.participantNames),
+    speakerObservations: parseSpeakerObservations(row.speakerObservations),
     lastHeartbeatAt: row.lastHeartbeatAt?.toISOString() ?? null,
     errorMessage: row.errorMessage,
     requestedAt: row.requestedAt.toISOString(),
