@@ -63,14 +63,14 @@ export function createBotSessionRunner(config) {
       await context.grantPermissions(["microphone", "camera"], { origin }).catch(() => undefined);
     }
     const page = await context.newPage();
-    return { browser, context, page };
+    return { browser, context, page, authenticated: Boolean(storageState) };
   }
   async function closeTeams(runtime) {
     await runtime?.context.close().catch(() => undefined);
     await runtime?.browser.close().catch(() => undefined);
   }
   async function joinTeams(runtime, session, heartbeat, timeoutMs = lobbyTimeoutMs) {
-    await prepareTeamsPage(runtime.page, session, teamsDisplayName);
+    await prepareTeamsPage(runtime.page, session, teamsDisplayName, { authenticated: runtime.authenticated });
     return waitForTeamsJoin(runtime.page, {
       sessionId: session.id,
       updateStatus: heartbeat.update,
