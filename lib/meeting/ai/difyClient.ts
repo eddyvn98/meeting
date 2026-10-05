@@ -218,13 +218,14 @@ export async function callWorkflowApp(
   apiKey: string,
   apiUrl: string,
   signal?: AbortSignal,
+  usageFeature?: string,
 ): Promise<string | null> {
   if (!apiKey || !apiUrl) return null;
 
   return runBlockingRequest({
     apiKey,
     apiUrl,
-    context: usageContext(meetingWorkflowApp(), callerEmail, meetingFeature(inputs), apiUrl, inputs),
+    context: usageContext(meetingWorkflowApp(), callerEmail, usageFeature || meetingFeature(inputs), apiUrl, inputs),
     signal,
     body: {
       inputs,
@@ -265,10 +266,11 @@ export async function callWorkflowAppStreaming(
   apiUrl: string,
   onChunk: (chunk: string) => void,
   signal?: AbortSignal,
+  usageFeature?: string,
 ): Promise<WorkflowStreamingResult> {
   if (!apiKey || !apiUrl) return { text: null, completed: false };
 
-  const context = usageContext(meetingWorkflowApp(), callerEmail, meetingFeature(inputs), apiUrl, inputs);
+  const context = usageContext(meetingWorkflowApp(), callerEmail, usageFeature || meetingFeature(inputs), apiUrl, inputs);
 
   for (let attempt = 1; attempt <= DIFY_BLOCKING_MAX_ATTEMPTS; attempt++) {
     const startedAt = Date.now();
