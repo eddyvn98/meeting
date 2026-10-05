@@ -28,6 +28,7 @@ export function MeetingTranscriptTab({
 	segments,
 	speakers,
 	speakerMappings,
+	participantNames,
 	languageMode,
 	canEdit,
 	onSegmentEdit,
@@ -36,6 +37,7 @@ export function MeetingTranscriptTab({
 	segments: TranscriptSegment[];
 	speakers: Speaker[];
 	speakerMappings: SpeakerMapping[];
+	participantNames: string[];
 	languageMode: TranscriptLanguageMode;
 	/** Owner or editor: the original text can be corrected in place. */
 	canEdit: boolean;
@@ -128,6 +130,7 @@ export function MeetingTranscriptTab({
 							meetingId={meetingId}
 							speakers={speakers}
 							speakerMappings={speakerMappings}
+							participantNames={participantNames}
 							segments={segments}
 							nameOverrides={nameOverrides}
 							onRenamed={handleRenamed}
