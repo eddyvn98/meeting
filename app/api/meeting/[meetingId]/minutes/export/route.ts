@@ -9,6 +9,7 @@ import { defaultMeetingDateAndTime } from "@/lib/meeting/minutesDefaults";
 import { buildMinutesDocx } from "@/lib/meeting/minutesDocx";
 import { parseMinutesDocContent } from "@/lib/meeting/minutesTranslation";
 import { resolveMinutesLabels } from "@/lib/meeting/minutesLabels";
+import { buildRosterAttendanceDefaults } from "@/lib/meeting/bot/attendance";
 
 const EXPORT_FORMATS = ["docx", "pdf"] as const;
 type ExportFormat = (typeof EXPORT_FORMATS)[number];
@@ -34,6 +35,7 @@ function minutesHeaderFields(meeting: PrismaMeeting, row: Awaited<ReturnType<typ
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       attendanceSuggestions: [],
+      attendanceDefaults: [],
       knownPeople: [],
     };
   }
@@ -53,6 +55,7 @@ function minutesHeaderFields(meeting: PrismaMeeting, row: Awaited<ReturnType<typ
     createdAt: null,
     updatedAt: null,
     attendanceSuggestions: [],
+    attendanceDefaults: [],
     knownPeople: [],
   };
 }
@@ -115,17 +118,42 @@ export async function GET(req: NextRequest, { params }: { params: { meetingId: s
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const [minutesRow, summary] = await Promise.all([
+  const [minutesRow, summary, botSession] = await Promise.all([
     prisma.meetingMinutes.findUnique({ where: { meetingId: meeting.id } }),
     prisma.meetingSummary.findUnique({
       where: { meetingId: meeting.id },
       include: { sections: { orderBy: { order: "asc" } } },
     }),
+    prisma.meetingBotSession.findUnique({
+      where: { meetingId: meeting.id },
+      select: { participantNames: true },
+    }),
   ]);
 
   const attendanceSection = summary?.sections.find((s) => s.kind === "attendance");
   const mattersSection = summary?.sections.find((s) => s.kind === "minutes_table");
-  const attendance = (Array.isArray(attendanceSection?.items) ? attendanceSection.items : []) as AttendanceSectionItem[];
+  const participantNames = botSession?.participantNames ?? [];
+  const normalizedNames = participantNames.map((name) => name.trim().toLowerCase()).filter(Boolean);
+  const rememberedPeople =
+    normalizedNames.length > 0
+      ? await prisma.meetingPersonRole.findMany({
+          where: {
+            ownerEmail: meeting.ownerEmail.toLowerCase(),
+            normalizedName: { in: normalizedNames },
+          },
+        })
+      : [];
+  const rosterAttendance = buildRosterAttendanceDefaults(
+    participantNames,
+    rememberedPeople.map((person) => ({
+      name: person.displayName ?? person.normalizedName,
+      role: person.role || null,
+      organization: person.organization ?? null,
+    })),
+  );
+  const attendance = attendanceSection
+    ? ((Array.isArray(attendanceSection.items) ? attendanceSection.items : []) as AttendanceSectionItem[])
+    : rosterAttendance;
   const matters = (Array.isArray(mattersSection?.items) ? mattersSection.items : []) as MinutesMatter[];
 
   let minutes = minutesHeaderFields(meeting, minutesRow, req.nextUrl.searchParams.get("tz"));
