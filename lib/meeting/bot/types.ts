@@ -31,6 +31,11 @@ export interface MeetingBotSchedule {
   updatedAt: string;
 }
 
+export interface MeetingBotSpeakerObservation {
+  atMs: number;
+  names: string[];
+}
+
 export interface MeetingBotSession {
   id: string;
   ownerEmail: string;
@@ -42,6 +47,8 @@ export interface MeetingBotSession {
   status: MeetingBotStatus;
   runnerId: string | null;
   meetingId: string | null;
+  participantNames: string[];
+  speakerObservations: MeetingBotSpeakerObservation[];
   lastHeartbeatAt: string | null;
   errorMessage: string | null;
   requestedAt: string;
@@ -55,4 +62,6 @@ export interface MeetingBotEventInput {
   status: MeetingBotStatus;
   meetingId?: string;
   errorMessage?: string;
+  participantNames?: string[];
+  speakerObservations?: MeetingBotSpeakerObservation[];
 }
