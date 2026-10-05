@@ -3,6 +3,7 @@ import { callWorkflowApp, resolveWorkflowConfig } from "./difyClient";
 export type MeetingProcessingFeature =
   | "translation"
   | "insights"
+  | "summary"
   | "minutes"
   | "section"
   | "mindmap"
@@ -66,6 +67,7 @@ export async function callProcessingWorkflow(options: ProcessingCallOptions): Pr
     config.key,
     config.url,
     options.signal,
+    options.feature,
   );
   if (primary) return primary;
 
@@ -77,5 +79,6 @@ export async function callProcessingWorkflow(options: ProcessingCallOptions): Pr
     config.key,
     config.url,
     options.signal,
+    options.feature,
   );
 }
