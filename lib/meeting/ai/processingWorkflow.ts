@@ -16,6 +16,7 @@ interface ProcessingCallOptions {
   legacyKeyEnvNames?: string[];
   legacyUrlEnvNames?: string[];
   signal?: AbortSignal;
+  validateAnswer?: (answer: string) => boolean;
 }
 
 function envModel(feature: MeetingProcessingFeature, kind: "PRIMARY" | "FALLBACK"): string | undefined {
@@ -68,6 +69,7 @@ export async function callProcessingWorkflow(options: ProcessingCallOptions): Pr
     config.url,
     options.signal,
     options.feature,
+    options.validateAnswer,
   );
   if (primary) return primary;
 
@@ -80,5 +82,6 @@ export async function callProcessingWorkflow(options: ProcessingCallOptions): Pr
     config.url,
     options.signal,
     options.feature,
+    options.validateAnswer,
   );
 }
