@@ -164,18 +164,34 @@ export function createMeetingRecorderRuntime({
     const requestContext = recorder.page.context().request;
     const meetingUrl = `${baseUrl}/api/meeting/${encodeURIComponent(recorder.meetingId)}`;
 
+    let readySeenAt = null;
     while (Date.now() < deadline) {
       await heartbeat.update("STOP_REQUESTED", { meetingId: recorder.meetingId }).catch(() => undefined);
       try {
         const response = await requestContext.get(meetingUrl);
         if (response.ok()) {
           const data = await response.json();
-          if (data?.status === "READY" || data?.status === "FAILED") return false;
+          if (data?.status === "FAILED") return false;
+          if (data?.status === "READY") {
+            readySeenAt ??= Date.now();
+            const diarizationStatus = await recorder.page.evaluate(() => {
+              return window.__meetingDiarizationStatus ?? null;
+            }).catch(() => null);
+            if (diarizationStatus === "done" || diarizationStatus === "failed") return false;
+            if (diarizationStatus === null && Date.now() - readySeenAt >= 10_000) return false;
+          }
         }
       } catch {
         // Keep polling through temporary app/network interruptions.
       }
       await new Promise((resolve) => setTimeout(resolve, processingPollMs));
+    }
+
+    if (readySeenAt !== null) {
+      console.log(
+        `[meeting-bot] session ${session.id} diarization did not finish before the processing timeout; keeping the usable READY transcript.`,
+      );
+      return false;
     }
 
     console.log(
