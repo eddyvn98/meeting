@@ -4,3 +4,4 @@ coverage/
 .env*
 !.env.example
 *.tsbuildinfo
+.meeting-bot/
