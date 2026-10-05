@@ -305,6 +305,9 @@ export interface MeetingMinutes {
    *  `isDefault`), so the Stage B UI can offer "add missing attendee"
    *  suggestions even after the owner has already saved MOM metadata. */
   attendanceSuggestions: AttendanceSuggestion[];
+  /** Automatic Present rows derived from the Teams roster. Used only when
+   *  this meeting has no saved/manual attendance section. */
+  attendanceDefaults: import("./overviewSections").AttendanceSectionItem[];
   /** Everyone whose role/organization this owner has saved before, so
    *  picking a name in the attendance table can fill them in. */
   knownPeople: AttendanceSuggestion[];
