@@ -94,7 +94,7 @@ export async function generateMeetingInsights(options: {
       callerEmail,
       legacyKeyEnvNames: INSIGHTS_LEGACY_KEYS,
       legacyUrlEnvNames: INSIGHTS_LEGACY_URLS,
-      signal: AbortSignal.timeout(35_000),
+      modelTimeoutMs: 35_000,
       validateAnswer: (answer) => parseMeetingInsights(answer, chunkSegments.length) !== null,
       inputs: {
         task: "insights",
