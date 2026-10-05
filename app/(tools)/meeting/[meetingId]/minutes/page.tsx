@@ -117,7 +117,7 @@ export default function MeetingMinutesPage() {
 
 	const attendanceSection = sections.find((s) => s.kind === "attendance");
 	const mattersSection = sections.find((s) => s.kind === "minutes_table");
-	const attendanceItems = (attendanceSection?.items ?? []) as AttendanceSectionItem[];
+	const attendanceItems = (attendanceSection?.items ?? minutes?.attendanceDefaults ?? []) as AttendanceSectionItem[];
 	const matters = (mattersSection?.items ?? []) as MinutesMatter[];
 
 	const handleGenerateClick = async () => {
