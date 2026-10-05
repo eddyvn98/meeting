@@ -2,6 +2,7 @@ import { chromium } from "@playwright/test";
 import { createPulseAudioSession } from "./meeting-bot-audio.mjs";
 import { createSessionControl } from "./meeting-bot-control.mjs";
 import { maybeRecoverSilentAudio } from "./meeting-bot-audio-watch.mjs";
+import { readTeamsRosterSnapshot } from "./meeting-bot-roster.mjs";
 import {
   initialAloneState,
   isAloneFromCount,
@@ -27,6 +28,8 @@ const ACTIVE_STATUSES = new Set([
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+const ROSTER_PERSIST_MS = 30_000;
+const MAX_SPEAKER_OBSERVATIONS = 5_000;
 export function createBotSessionRunner(config) {
   const {
     api, emit, recorderRuntime, runnerId, teamsDisplayName,
@@ -110,6 +113,34 @@ export function createBotSessionRunner(config) {
       recorder = await recorderRuntime.launch(session, sink.sourceName);
       await heartbeat.update("CAPTURING", { meetingId: recorder.meetingId });
       const captureStartedAtMs = Date.now();
+      const rosterNames = new Map();
+      const speakerObservations = [];
+      let nextRosterPersistAt = 0;
+
+      const sampleRoster = async () => {
+        const roster = await readTeamsRosterSnapshot(teamsRuntime.page, {
+          selfDisplayName: teamsDisplayName,
+        });
+        for (const name of roster.participantNames) {
+          const key = name.trim().toLocaleLowerCase();
+          if (key && !rosterNames.has(key)) rosterNames.set(key, name.trim());
+        }
+        if (roster.activeSpeakerNames.length > 0) {
+          speakerObservations.push({
+            atMs: Math.max(0, Date.now() - captureStartedAtMs),
+            names: roster.activeSpeakerNames,
+          });
+          if (speakerObservations.length > MAX_SPEAKER_OBSERVATIONS) {
+            speakerObservations.splice(0, speakerObservations.length - MAX_SPEAKER_OBSERVATIONS);
+          }
+        }
+      };
+      const rosterPayload = () => ({
+        participantNames: [...rosterNames.values()],
+        speakerObservations: [...speakerObservations],
+      });
+
+      await sampleRoster().catch(() => undefined);
       let aloneState = initialAloneState();
       let seenOtherParticipant = false;
       let reconnectingSince = null;
@@ -185,6 +216,7 @@ export function createBotSessionRunner(config) {
           break;
         }
         const nowMs = Date.now();
+        await sampleRoster().catch(() => undefined);
         if (isMaxDurationExceeded(captureStartedAtMs, nowMs, maxDurationMs)) {
           exitMessage = "The bot reached the maximum configured meeting duration.";
           break;
@@ -233,12 +265,18 @@ export function createBotSessionRunner(config) {
           exitMessage = error instanceof Error ? error.message : "The bot was removed during audio recovery.";
           break;
         }
-        await heartbeat.update("CAPTURING", { meetingId: recorder.meetingId });
+        const persistRoster = nowMs >= nextRosterPersistAt;
+        await heartbeat.update("CAPTURING", {
+          meetingId: recorder.meetingId,
+          ...(persistRoster ? rosterPayload() : {}),
+        });
+        if (persistRoster) nextRosterPersistAt = nowMs + ROSTER_PERSIST_MS;
         await sleep(pollMs);
       }
       const recordedMs = Date.now() - captureStartedAtMs;
       await heartbeat.update("STOP_REQUESTED", {
         meetingId: recorder.meetingId,
+        ...rosterPayload(),
         ...(exitMessage ? { errorMessage: exitMessage } : {}),
       });
       await closeTeams(teamsRuntime);
