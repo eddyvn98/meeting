@@ -63,6 +63,7 @@ async function runBatchModel(
     config.url,
     () => undefined,
     signal,
+    "translation",
   );
 }
 
@@ -144,6 +145,7 @@ export async function streamLiveTranslation(
     config.url,
     (chunk) => onChunk(chunk, primaryLabel),
     primarySignal,
+    "translation",
   );
   if (primary.completed && primary.text?.trim()) {
     return {
@@ -168,6 +170,7 @@ export async function streamLiveTranslation(
     config.url,
     (chunk) => onChunk(chunk, fallbackLabel),
     fallbackSignal,
+    "translation",
   );
   if (!fallback.completed || !fallback.text?.trim()) return null;
 
