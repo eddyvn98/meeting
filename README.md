@@ -32,12 +32,12 @@ Supported repeats: never, daily, weekdays, weekly, every two weeks, and monthly.
 
 The Linux runner polls due schedules, creates exactly one bot session for each occurrence, joins Teams Web, waits in the lobby for a participant to admit it, records/transcribes, and leaves when the meeting ends. Microsoft Graph is optional and is not required for this flow.
 
-See `docs/meeting-bot.md` for the runner and internal scheduler, `docs/microsoft-graph-calendar.md` for Microsoft Graph / Outlook setup, and `docs/meeting-bot-reliability.md` for interruption recovery and the production E2E matrix.
+See `docs/meeting-bot.md` for the runner and internal scheduler, `docs/microsoft-graph-calendar.md` for Microsoft Graph / Outlook setup, `docs/shared-teams-meeting-room.md` for the shared-room access invariant, and `docs/meeting-bot-reliability.md` for interruption recovery and the production E2E matrix.
 
 
 ### Optional Outlook calendar sync
 
-Microsoft Graph can watch one dedicated shared mailbox such as `meetingbot@company.com`. Users invite that mailbox to a Teams meeting; the app reads only the bot mailbox calendar, assigns the meeting to the allowed organizer, and queues one browser bot join. The Graph path is independent of the internal scheduler and does not require a Teams custom app.
+Microsoft Graph can watch one dedicated shared mailbox such as `meetingbot@company.com`. Users invite that mailbox to a Teams meeting; the app reads only the bot mailbox calendar, captures the occurrence's attendee emails, and queues one browser bot join. The organizer is only the administrative owner: every signed-in calendar attendee opens the same live/result Meeting without a manual share. The Graph path is independent of the internal scheduler and does not require a Teams custom app.
 
 After an administrator supplies the Entra application credentials and `Calendars.Read` application access, verify the connection with:
 
