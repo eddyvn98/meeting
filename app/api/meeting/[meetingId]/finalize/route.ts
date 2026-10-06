@@ -56,6 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const fullCandidate = await findFullAudio(meeting.id);
   const leaseReason = `${FINALIZING_PREFIX}${new Date().toISOString()}`;
   let skippedParts = 0;
 
@@ -97,7 +98,11 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
           )
         : [];
 
-      if (!expectedChunkCount || chunks.length !== expectedChunkCount || missingSequences.length > 0) {
+      const chunkSetComplete =
+        Boolean(expectedChunkCount) &&
+        chunks.length === expectedChunkCount &&
+        missingSequences.length === 0;
+      if (!chunkSetComplete && !fullCandidate) {
         return {
           kind: "incomplete" as const,
           meeting: lockedMeeting,
@@ -108,15 +113,16 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
       }
 
       const orderedPaths = chunks.map((chunk) => chunk.storageUrl);
-      if (orderedPaths.some((path) => !path)) {
+      const missingStorageSequences = chunks
+        .filter((chunk) => !chunk.storageUrl)
+        .map((chunk) => chunk.sequence);
+      if (missingStorageSequences.length > 0 && !fullCandidate) {
         return {
           kind: "incomplete" as const,
           meeting: lockedMeeting,
-          expectedChunkCount,
+          expectedChunkCount: expectedChunkCount ?? null,
           receivedChunkCount: chunks.length,
-          missingSequences: chunks
-            .filter((chunk) => !chunk.storageUrl)
-            .map((chunk) => chunk.sequence),
+          missingSequences: missingStorageSequences,
         };
       }
 
@@ -132,7 +138,8 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
         kind: "claimed" as const,
         meeting: claimed,
         chunks,
-        orderedPaths: orderedPaths as string[],
+        orderedPaths: orderedPaths.filter((path): path is string => Boolean(path)),
+        chunkSetComplete: chunkSetComplete && missingStorageSequences.length === 0,
       };
     }, { maxWait: 15_000, timeout: 30_000 });
 
@@ -165,7 +172,7 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     let merged = false;
     let usedFull = false;
 
-    const fullPath = await findFullAudio(meeting.id);
+    const fullPath = fullCandidate;
     if (fullPath && (await splitReadableChunks([fullPath])).readable.length === 1) {
       const encoded = await mergeAudioChunks(
         [fullPath],
@@ -181,6 +188,22 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
       merged = encoded.success;
       usedFull = true;
     } else {
+      if (!claim.chunkSetComplete) {
+        await prisma.meeting.updateMany({
+          where: { id: meeting.id, status: "UPLOADING", failureReason: leaseReason },
+          data: { failureReason: null },
+        });
+        return NextResponse.json(
+          {
+            error: "Waiting for all audio chunks",
+            code: "WAITING_FOR_CHUNKS",
+            expectedChunkCount: requestedExpected ?? null,
+            receivedChunkCount: chunks.length,
+            missingSequences: [],
+          },
+          { status: 409 },
+        );
+      }
       const missingFiles = (
         await Promise.all(orderedPaths.map((path) => stat(path).catch(() => null)))
       )
