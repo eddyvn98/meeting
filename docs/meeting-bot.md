@@ -61,7 +61,7 @@ Run the complete Meeting workflow without requiring a Teams custom app or Micros
 5. The Linux runner joins automatically near the scheduled time.
 6. A participant admits `ONG STT Assistant` from the Teams lobby when required.
 7. Existing recording, STT, summary, minutes and action-item processing runs normally.
-8. The bot leaves when the call ends or its configured safety timeout is reached.\n9. When capture starts, verified attendees receive a Meeting notification and can open the shared live STT room at `/meeting/{meetingId}?tab=transcript`.
+8. The bot leaves when the call ends or its configured safety timeout is reached.\n9. When capture starts, invited attendees from the Outlook/Graph occurrence receive Meeting access/notification; identities discovered from the Teams roster can supplement that list. They can open the shared live STT room at `/meeting/{meetingId}?tab=transcript`.
 
 ## Internal schedules
 
@@ -163,6 +163,7 @@ MEETING_BOT_SCHEDULE_POLL_MS=15000
 MEETING_BOT_LOBBY_TIMEOUT_MS=900000
 MEETING_BOT_RECONNECT_TIMEOUT_MS=120000
 MEETING_BOT_REJOIN_WINDOW_MS=120000
+MEETING_BOT_CONTROL_OUTAGE_GRACE_MS=60000
 MEETING_BOT_CALENDAR_LATE_GRACE_MS=600000
 ```
 
