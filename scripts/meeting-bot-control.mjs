@@ -13,9 +13,24 @@ export function createSessionControl({ api, emit, runnerId }) {
         status = nextStatus;
         extra = nextExtra;
       }
-      const run = queue.then(() =>
-        emit(sessionId, nextStatus, { ...nextExtra, expectedStatus }),
-      );
+      const run = queue.then(async () => {
+        try {
+          return await emit(sessionId, nextStatus, { ...nextExtra, expectedStatus });
+        } catch (error) {
+          if (error && typeof error === "object" && error.status === 409) {
+            const current = await api(
+              `/api/meeting/bot-sessions/${encodeURIComponent(sessionId)}`,
+            );
+            if (
+              current?.runnerId === runnerId &&
+              (current.status === nextStatus || current.status === "STOP_REQUESTED")
+            ) {
+              return current;
+            }
+          }
+          throw error;
+        }
+      });
       queue = run.catch(() => undefined);
       return run;
     };
