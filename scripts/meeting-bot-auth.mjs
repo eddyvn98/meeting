@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { chmod, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
@@ -18,7 +18,7 @@ async function main() {
     ...(browserExecutable ? { executablePath: browserExecutable } : {}),
     headless: false,
     args: [
-      "--no-sandbox",
+      ...(process.env.MEETING_BOT_DISABLE_CHROMIUM_SANDBOX === "true" ? ["--no-sandbox"] : []),
       "--disable-dev-shm-usage",
       "--disable-notifications",
     ],
@@ -47,7 +47,8 @@ async function main() {
     }
 
     await context.storageState({ path: authStatePath });
-    console.log(`[meeting-bot] Teams authentication state saved to ${authStatePath}`);
+    await chmod(authStatePath, 0o600).catch(() => undefined);
+    console.log(`[meeting-bot] Teams authentication state saved to ${authStatePath} with owner-only permissions.`);
     console.log("[meeting-bot] The saved session can be used for authenticated Teams join and/or Outlook attendee identity.");
     console.log("[meeting-bot] Guest join can keep MEETING_BOT_TEAMS_AUTH_MODE=anonymous while reusing this auth state via MEETING_BOT_IDENTITY_AUTH_STATE.");
   } finally {
