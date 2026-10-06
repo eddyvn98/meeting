@@ -2,28 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { encode } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
 import { isBotRunnerRequest, runnerId } from "../_auth";
+import { recorderTokenTtlSec } from "@/lib/meeting/bot/recorderTokenTtl";
 
 export const runtime = "nodejs";
 
 const ACTIVE = ["CLAIMED", "JOINING", "LOBBY", "JOINED", "CAPTURING", "STOP_REQUESTED"] as const;
-const DEFAULT_TOKEN_TTL_SEC = 6 * 60 * 60;
-const TOKEN_FINALIZE_GRACE_SEC = 30 * 60;
-const MAX_TOKEN_TTL_SEC = 24 * 60 * 60;
-
-export function recorderTokenTtlSec(env: NodeJS.ProcessEnv = process.env): number {
-  const configuredTtl = Number(env.MEETING_BOT_RECORDER_TOKEN_TTL_SEC);
-  const configuredMaxDurationMs = Number(env.MEETING_BOT_MAX_DURATION_MS);
-  const durationBased =
-    Number.isFinite(configuredMaxDurationMs) && configuredMaxDurationMs > 0
-      ? Math.ceil(configuredMaxDurationMs / 1000) + TOKEN_FINALIZE_GRACE_SEC
-      : DEFAULT_TOKEN_TTL_SEC;
-  const requested =
-    Number.isFinite(configuredTtl) && configuredTtl > 0
-      ? Math.ceil(configuredTtl)
-      : Math.max(DEFAULT_TOKEN_TTL_SEC, durationBased);
-  return Math.min(MAX_TOKEN_TTL_SEC, Math.max(DEFAULT_TOKEN_TTL_SEC, requested));
-}
-
 /** Issues a short-lived NextAuth session token to the authenticated runner.
  * The runner never needs NEXTAUTH_SECRET itself; only the web server signs
  * this scoped bot identity after verifying ownership of the claimed session. */
