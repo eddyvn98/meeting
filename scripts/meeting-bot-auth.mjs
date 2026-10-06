@@ -48,7 +48,8 @@ async function main() {
 
     await context.storageState({ path: authStatePath });
     console.log(`[meeting-bot] Teams authentication state saved to ${authStatePath}`);
-    console.log("[meeting-bot] Set MEETING_BOT_TEAMS_AUTH_MODE=authenticated before starting the runner.");
+    console.log("[meeting-bot] The saved session can be used for authenticated Teams join and/or Outlook attendee identity.");
+    console.log("[meeting-bot] Guest join can keep MEETING_BOT_TEAMS_AUTH_MODE=anonymous while reusing this auth state via MEETING_BOT_IDENTITY_AUTH_STATE.");
   } finally {
     prompt.close();
     await context.close().catch(() => undefined);
