@@ -36,6 +36,13 @@ describe("Microsoft Graph bot mailbox helpers", () => {
     })).toBe("2026-10-05T09:00:00.000Z");
   });
 
+  it("rejects offset-less non-UTC wall clocks instead of using runner local time", () => {
+    expect(graphDateTimeToIso({
+      dateTime: "2026-10-05T09:00:00",
+      timeZone: "Pacific Standard Time",
+    })).toBeNull();
+  });
+
   it("accepts an invited Teams meeting from an allowed organizer", () => {
     const config = graphCalendarConfig(env);
     const item = graphEventToSyncItem({
