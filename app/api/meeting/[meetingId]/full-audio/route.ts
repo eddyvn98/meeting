@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { prisma } from "@/lib/prisma";
@@ -66,6 +66,16 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     }
     if (!acceptsAudio(lockedMeeting)) throw new MeetingClosedError();
     await rename(temp, target);
+    const targetName = target.slice(dir.length + 1);
+    const staleFullFiles = (await readdir(dir))
+      .filter((name) =>
+        name.startsWith("full.") &&
+        !name.endsWith(".uploading") &&
+        name !== targetName
+      );
+    await Promise.all(
+      staleFullFiles.map((name) => rm(join(dir, name), { force: true })),
+    );
     return true;
   }, { maxWait: 15_000, timeout: 30_000 }).catch(async (error) => {
     await rm(temp, { force: true }).catch(() => undefined);
