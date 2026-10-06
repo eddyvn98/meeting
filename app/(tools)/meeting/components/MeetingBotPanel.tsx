@@ -115,7 +115,14 @@ export function MeetingBotPanel({
                 <span className="font-medium text-foreground">
                   {friendlyStatusLabel(session.status)}
                 </span>
-                {session.meetingId && <span>Recording created</span>}
+                {session.meetingId && session.status === "CAPTURING" ? (
+                  <Link
+                    href={`/meeting/${session.meetingId}?tab=transcript`}
+                    className="rounded-md bg-emerald-500/10 px-2.5 py-1 font-semibold text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300"
+                  >
+                    Open live STT
+                  </Link>
+                ) : session.meetingId ? <span>Recording created</span> : null}
                 <button
                   type="button"
                   onClick={() => void stopBot(session)}
