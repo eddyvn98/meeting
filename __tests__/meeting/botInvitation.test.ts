@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseTeamsInvitation } from "@/lib/meeting/bot/invitation";
-import { normalizeTeamsMeetingUrl } from "@/lib/meeting/bot/teamsUrl";
+import { normalizeTeamsMeetingUrl, teamsMeetingIdentity } from "@/lib/meeting/bot/teamsUrl";
 import { nextMeetingScheduleAtOrAfter, nextMeetingScheduleRun } from "@/lib/meeting/bot/recurrence";
 
 describe("Teams invitation parsing", () => {
@@ -55,6 +55,21 @@ describe("Teams URL normalization", () => {
       "https://teams.microsoft.com/l/meetup-join/abc?a=1&z=2",
     );
     expect(a).toBe(b);
+  });
+
+  it("uses host and decoded join path as the stable bot occurrence identity", () => {
+    expect(teamsMeetingIdentity(
+      "https://teams.microsoft.com/l/meetup-join/19%3ameeting_ABC%40thread.v2/0?context=one",
+    )).toBe(
+      teamsMeetingIdentity(
+        "https://teams.microsoft.com/l/meetup-join/19%3Ameeting_ABC%40thread.v2/0?context=two",
+      ),
+    );
+    expect(teamsMeetingIdentity(
+      "https://teams.microsoft.com/l/meetup-join/meeting-a",
+    )).not.toBe(teamsMeetingIdentity(
+      "https://teams.microsoft.com/l/meetup-join/meeting-b",
+    ));
   });
 });
 
