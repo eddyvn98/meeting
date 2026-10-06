@@ -60,16 +60,24 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
   if (body.attendeeEmails !== undefined && !Array.isArray(body.attendeeEmails)) {
     return NextResponse.json({ error: "attendeeEmails must be an array." }, { status: 400 });
   }
+  if (body.presentAttendeeEmails !== undefined && !Array.isArray(body.presentAttendeeEmails)) {
+    return NextResponse.json({ error: "presentAttendeeEmails must be an array." }, { status: 400 });
+  }
   if (body.speakerObservations !== undefined && !Array.isArray(body.speakerObservations)) {
     return NextResponse.json({ error: "speakerObservations must be an array." }, { status: 400 });
   }
   const participantNames =
     body.participantNames === undefined ? undefined : sanitizeParticipantNames(body.participantNames);
   const previousAttendeeCount = session.attendeeEmails.length;
+  const previousPresentAttendeeCount = session.presentAttendeeEmails.length;
   const attendeeEmails =
     body.attendeeEmails === undefined
       ? undefined
       : sanitizeMeetingAttendeeEmails([...session.attendeeEmails, ...body.attendeeEmails]);
+  const presentAttendeeEmails =
+    body.presentAttendeeEmails === undefined
+      ? undefined
+      : sanitizeMeetingAttendeeEmails([...session.presentAttendeeEmails, ...body.presentAttendeeEmails]);
   const speakerObservations =
     body.speakerObservations === undefined ? undefined : parseSpeakerObservations(body.speakerObservations);
 
@@ -91,6 +99,7 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
         meetingId: meetingId ?? undefined,
         participantNames,
         attendeeEmails,
+        presentAttendeeEmails,
         speakerObservations:
           speakerObservations === undefined
             ? undefined
@@ -139,10 +148,13 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
       `added=${updated.attendeeEmails.length - previousAttendeeCount} totalEmails=${updated.attendeeEmails.length}`,
     );
   }
-  if (status === "CAPTURING" && meetingId) {
+  const firstCaptureTransition = status === "CAPTURING" && session.status !== "CAPTURING";
+  const discoveredPresentAttendee =
+    updated.presentAttendeeEmails.length > previousPresentAttendeeCount;
+  if (status === "CAPTURING" && meetingId && (firstCaptureTransition || discoveredPresentAttendee)) {
     const meeting = await prisma.meeting.findUnique({ where: { id: meetingId } });
     if (meeting) {
-      await notifyLiveRoomStarted(meeting, updated.attendeeEmails);
+      await notifyLiveRoomStarted(meeting, updated.presentAttendeeEmails);
     }
   }
   if (["ENDED", "FAILED"].includes(status)) {
