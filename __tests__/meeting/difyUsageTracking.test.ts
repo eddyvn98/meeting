@@ -58,8 +58,10 @@ describe("Dify usage parsing", () => {
     });
   });
 
-  it("reads explicit model selectors", () => {
-    expect(requestedModelFromInputs({ model_selector: "deepseek-v4-flash" }))
+  it("reads reported model inputs", () => {
+    expect(requestedModelFromInputs({ model: "qwen3.5-flash" }))
+      .toBe("qwen3.5-flash");
+    expect(requestedModelFromInputs({ model_id: "deepseek-v4-flash" }))
       .toBe("deepseek-v4-flash");
     expect(requestedModelFromInputs({})).toBeNull();
   });
