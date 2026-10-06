@@ -13,6 +13,7 @@ import {
   graphCalendarSourceKey,
   parseCalendarSyncDate,
   parseCalendarSyncPayload,
+  sanitizeCalendarAttendeeEmails,
 } from "@/lib/meeting/bot/calendarSyncPayload";
 
 export const runtime = "nodejs";
@@ -84,6 +85,7 @@ export async function POST(req: NextRequest) {
 
     const meetingUrl = normalizeTeamsMeetingUrl(item.meetingUrl);
     const ownerEmail = canonicalEmail(item.ownerEmail);
+    const attendeeEmails = sanitizeCalendarAttendeeEmails(item.attendeeEmails);
     const organizerAllowed = item.organizerAllowed === true;
     const invited = item.invited === true;
     const unavailable =
@@ -150,6 +152,7 @@ export async function POST(req: NextRequest) {
             meetingUrl,
             title: cleanMeetingTitle(item.title),
             scheduledAt,
+            attendeeEmails,
             ...(current.status === "REQUESTED" ? { errorMessage: null } : {}),
           },
         });
@@ -230,6 +233,7 @@ export async function POST(req: NextRequest) {
           source: "CALENDAR",
           sourceKey: key,
           scheduledAt,
+          attendeeEmails,
         },
       });
       stats.created += 1;
