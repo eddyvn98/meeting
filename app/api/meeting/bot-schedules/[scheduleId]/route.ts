@@ -45,7 +45,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const result: MutationResult = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx): Promise<MutationResult> => {
     // Dispatch, edit and delete share this per-schedule lock. Once a user
     // action succeeds, a waiting dispatcher must re-read the updated schedule
     // and cannot resurrect the superseded occurrence.
