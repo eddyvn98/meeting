@@ -45,7 +45,8 @@ export function createBotSessionRunner(config) {
     browserChannel, browserExecutable, headless, requireMediaOff, pollMs,
     lobbyTimeoutMs, reconnectTimeoutMs, rejoinWindowMs, rejoinAttemptMs,
     aloneTimeoutMs, initialAloneGraceMs, maxDurationMs, audioInitialWarnMs, audioSilenceWarnMs,
-    controlOutageGraceMs, shouldShutdown = () => false,
+    controlOutageGraceMs, shutdownFinalizeTimeoutMs = 45_000,
+    controlOutageFinalizeTimeoutMs = 90_000, shouldShutdown = () => false,
   } = config;
   const control = createSessionControl({ api, emit, runnerId, controlOutageGraceMs });
 
@@ -526,6 +527,7 @@ export function createBotSessionRunner(config) {
         await sleep(pollMs);
       }
       const recordedMs = Date.now() - captureStartedAtMs;
+      const shutdownRequested = shouldShutdown();
       await probeOutlookInvitees("meeting-end");
       await sampleRoster({ probeIdentities: true }).catch((error) => {
         logIdentityDiagnostic(session.id, "session", "FINAL_IDENTITY_PROBE_FAILED", {
@@ -544,7 +546,17 @@ export function createBotSessionRunner(config) {
       });
       await closeTeams(teamsRuntime);
       teamsRuntime = null;
-      await recorderRuntime.finish(recorder);
+      await recorderRuntime.finish(
+        recorder,
+        shutdownRequested ? { timeoutMs: shutdownFinalizeTimeoutMs } : undefined,
+      );
+      if (shutdownRequested) {
+        await heartbeat.update("ENDED", {
+          meetingId: recorder.meetingId,
+          errorMessage: exitMessage ?? "The runner shut down after finalizing the recording.",
+        }).catch(() => undefined);
+        continue;
+      }
       const processingOutcome = await recorderRuntime.waitForProcessing(
         recorder, session, heartbeat, recordedMs,
       );
@@ -568,6 +580,16 @@ export function createBotSessionRunner(config) {
       const code = errorCode(error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       const failedMeetingId = recorder?.meetingId || error?.meetingId;
+      if (code === "CONTROL_PLANE_UNAVAILABLE" && recorder && recorderRuntime.isAlive(recorder)) {
+        await closeTeams(teamsRuntime).catch(() => undefined);
+        teamsRuntime = null;
+        await recorderRuntime.finish(recorder, { timeoutMs: controlOutageFinalizeTimeoutMs }).catch((finalizeError) => {
+          console.error(
+            `[meeting-bot] session ${session.id} could not finalize during control-plane outage:`,
+            finalizeError instanceof Error ? finalizeError.message : finalizeError,
+          );
+        });
+      }
       if (isIntentionalTeamsExit(error) && !recorder) {
         await heartbeat.update("ENDED", { errorMessage }).catch(() => undefined);
       } else {
@@ -580,6 +602,7 @@ export function createBotSessionRunner(config) {
           "RECORDER_SOURCE_ENDED",
           "TEAMS_RECOVERY_FAILED",
           "TEAMS_PAGE_CLOSED",
+          "CONTROL_PLANE_UNAVAILABLE",
         ].includes(code)) {
           await requestContinuation(session);
         }
