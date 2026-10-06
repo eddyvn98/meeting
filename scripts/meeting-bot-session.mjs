@@ -573,8 +573,19 @@ export function createBotSessionRunner(config) {
         return;
       }
       const processingOutcome = await recorderRuntime.waitForProcessing(
-        recorder, session, heartbeat, recordedMs,
+        recorder,
+        session,
+        heartbeat,
+        recordedMs,
+        { shouldShutdown },
       );
+      if (processingOutcome === "SHUTDOWN") {
+        await heartbeat.update("ENDED", {
+          meetingId: recorder.meetingId,
+          errorMessage: "The runner shut down after preserving the recording; processing can resume when the meeting is reopened.",
+        }).catch(() => undefined);
+        return;
+      }
       if (processingOutcome === "TIMEOUT") {
         await heartbeat.update("FAILED", {
           meetingId: recorder.meetingId,
