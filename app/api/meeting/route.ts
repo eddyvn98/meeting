@@ -10,8 +10,8 @@ import { DEFAULT_STT_LANG, isValidSttLang } from "@/lib/meeting/sttLanguages";
 
 const VALID_STATUSES: MeetingStatus[] = ["UPLOADING", "PROCESSING", "READY", "FAILED"];
 
-/** GET /api/meeting — the caller's own meetings PLUS any meeting shared with
- *  them via an active (unrevoked, unexpired) MeetingShare grant — newest
+/** GET /api/meeting — the caller's own meetings PLUS calendar-backed Teams
+ *  rooms where they are an attendee PLUS explicit active MeetingShare grants — newest
  *  first, for the Home screen's "Recent Meetings" list, the left sidebar's
  *  Recent list, and the "Meetings" nav page. No nested transcript/summary
  *  payload — see GET /api/meeting/[meetingId] for that.
