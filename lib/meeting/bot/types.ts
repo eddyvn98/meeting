@@ -64,6 +64,7 @@ export interface MeetingBotEventInput {
   expectedStatus?: MeetingBotStatus;
   meetingId?: string;
   errorMessage?: string;
+  meetingFailureScope?: "CAPTURE" | "PROCESSING";
   participantNames?: string[];
   attendeeEmails?: string[];
   speakerObservations?: MeetingBotSpeakerObservation[];
