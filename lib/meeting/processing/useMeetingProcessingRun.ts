@@ -36,6 +36,18 @@ const STALL_TIMEOUT_MS: Record<ProcessingEngine, number> = {
 /** Name of the cross-tab lock: only one tab may transcribe a given meeting. */
 const processingLockName = (meetingId: string) => `meeting-processing:${meetingId}`;
 
+async function touchProcessingHeartbeat(meetingId: string): Promise<void> {
+  try {
+    await fetch(`/api/meeting/${encodeURIComponent(meetingId)}/processing-heartbeat`, {
+      method: "POST",
+      cache: "no-store",
+    });
+  } catch {
+    // Best effort only. The processing run itself remains authoritative; the
+    // next completed chunk gets another chance to refresh the stale deadline.
+  }
+}
+
 async function stillNeedsProcessing(meetingId: string): Promise<boolean> {
   try {
     const res = await fetch(`/api/meeting/${encodeURIComponent(meetingId)}`, { cache: "no-store" });
@@ -106,11 +118,15 @@ export function useMeetingProcessingRun({ meetingId, enabled, engine, sttLanguag
         timerRef.current = window.setTimeout(() => fail("Processing stopped making progress."), ms);
       };
       const onProgress = () => {
-        if (isCurrent() && !settled) arm(STALL_TIMEOUT_MS[next]);
+        if (isCurrent() && !settled) {
+          void touchProcessingHeartbeat(meetingId);
+          arm(STALL_TIMEOUT_MS[next]);
+        }
       };
 
       const start = () => {
         setInOtherTab(false);
+        void touchProcessingHeartbeat(meetingId);
         arm(START_TIMEOUT_MS);
         void runLocalMeetingProcessing(meetingId, onProgress, onProgress, next, sttLanguage).then((outcome) => {
           if (!isCurrent()) return;
