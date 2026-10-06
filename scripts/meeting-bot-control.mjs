@@ -31,11 +31,25 @@ export function createSessionControl({
             const current = await api(
               `/api/meeting/bot-sessions/${encodeURIComponent(sessionId)}`,
             );
-            if (
-              current?.runnerId === runnerId &&
-              (current.status === nextStatus || current.status === "STOP_REQUESTED")
-            ) {
+            if (current?.runnerId === runnerId && current.status === nextStatus) {
               acknowledgedStatus = current.status;
+              return current;
+            }
+            if (current?.runnerId === runnerId && current.status === "STOP_REQUESTED") {
+              acknowledgedStatus = current.status;
+              // A concurrent user stop is a successful race for ordinary
+              // heartbeats: the caller should observe STOP_REQUESTED and stop
+              // capture. Terminal updates are different — STOP_REQUESTED is
+              // only an intermediate state, so finish the lifecycle instead
+              // of leaving it for the stale-session sweeper to mislabel FAILED.
+              if (nextStatus === "ENDED" || nextStatus === "FAILED") {
+                const terminal = await emit(sessionId, nextStatus, {
+                  ...nextExtra,
+                  expectedStatus: "STOP_REQUESTED",
+                });
+                if (terminal?.status) acknowledgedStatus = terminal.status;
+                return terminal;
+              }
               return current;
             }
           }
