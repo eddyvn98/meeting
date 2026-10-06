@@ -46,8 +46,12 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
   }
 
   const stuckInProcessing = isStaleProcessing(meeting.status, meeting.updatedAt.getTime(), Date.now(), staleThresholdMs());
-  if (!meeting.isMockResult && !stuckInProcessing && !isAudioOnlyResult(meeting)) {
-    return NextResponse.json({ error: "This meeting doesn't have a mock result to retry" }, { status: 400 });
+  const retryableProcessingFailure =
+    meeting.status === "FAILED" &&
+    typeof meeting.failureReason === "string" &&
+    /processing (?:stalled|timed out)/i.test(meeting.failureReason);
+  if (!meeting.isMockResult && !stuckInProcessing && !retryableProcessingFailure && !isAudioOnlyResult(meeting)) {
+    return NextResponse.json({ error: "This meeting is not eligible for reprocessing." }, { status: 400 });
   }
 
   const updated = await prisma.meeting.update({
