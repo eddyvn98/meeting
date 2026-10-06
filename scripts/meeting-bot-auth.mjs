@@ -11,7 +11,9 @@ const browserChannel = process.env.MEETING_BOT_BROWSER_CHANNEL || undefined;
 const browserExecutable = process.env.MEETING_BOT_BROWSER_EXECUTABLE || undefined;
 
 async function main() {
-  await mkdir(dirname(authStatePath), { recursive: true });
+  const authStateDir = dirname(authStatePath);
+  await mkdir(authStateDir, { recursive: true, mode: 0o700 });
+  await chmod(authStateDir, 0o700);
 
   const browser = await chromium.launch({
     ...(browserChannel ? { channel: browserChannel } : {}),
@@ -47,7 +49,7 @@ async function main() {
     }
 
     await context.storageState({ path: authStatePath });
-    await chmod(authStatePath, 0o600).catch(() => undefined);
+    await chmod(authStatePath, 0o600);
     console.log(`[meeting-bot] Teams authentication state saved to ${authStatePath} with owner-only permissions.`);
     console.log("[meeting-bot] The saved session can be used for authenticated Teams join and/or Outlook attendee identity.");
     console.log("[meeting-bot] Guest join can keep MEETING_BOT_TEAMS_AUTH_MODE=anonymous while reusing this auth state via MEETING_BOT_IDENTITY_AUTH_STATE.");
