@@ -153,3 +153,31 @@ Do not upload this directory to source control. Treat screenshots as potentially
 The current browser identity implementation uses plain Playwright only and requires **no AI API key**.
 
 If Stagehand or another AI browser-agent fallback is added later, keep it behind a feature flag. Only that optional fallback would need a model/API credential (or a locally hosted compatible model). Recording, STT, and the deterministic Playwright path must remain usable without any AI key.
+
+
+## When participant email extraction runs
+
+Identity collection follows actual meeting presence, not the invitation list.
+
+| Situation | Behavior |
+| --- | --- |
+| Meeting is only scheduled | No participant email extraction yet. |
+| Meeting is cancelled before the bot joins | No participant email is granted from the cancelled meeting. The join/session lifecycle handles the failure separately. |
+| Bot is waiting in the lobby | No participant email extraction yet because the bot cannot reliably inspect the live People roster. |
+| Bot is admitted / capture starts | Open People and run an immediate identity probe. |
+| Meeting starts with only one or a few people | Resolve whoever is actually visible; do not wait for the full invited group. |
+| A new participant joins later | Roster polling notices a new display name and triggers an identity probe immediately instead of waiting for the periodic probe. |
+| A participant leaves | Keep any already verified attendee email. Leaving the call does not revoke access to the shared meeting result. |
+| A participant leaves before email resolution | Their display name remains in the historical observed roster; authenticated Outlook fallback may still resolve that observed name later. |
+| A participant rejoins | The historical roster/email sets deduplicate the participant; no duplicate access record is created. |
+| Long meeting with no roster change | Run a periodic identity retry every 60 seconds to recover from transient UI/profile-card failures. |
+| Meeting is ending | Run one final best-effort identity probe before the bot closes Teams. |
+| External/anonymous participant exposes no email | Do not guess. They do not receive automatic account-based access unless another trusted source resolves them or someone explicitly shares the meeting. |
+
+### Authorization rule
+
+Outlook is an identity resolver, not the authorization source.
+
+The bot first observes a participant in the Teams People roster. Only then may authenticated Outlook Web be used to resolve that observed display name to an email. A person who is merely invited in Outlook but never appears in Teams must not gain automatic shared-room access.
+
+Once an observed participant is resolved to a verified email, that email remains on the MeetingBotSession for the whole meeting and post-meeting result.
