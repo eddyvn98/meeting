@@ -464,7 +464,7 @@ export function createBotSessionRunner(config) {
         const participantCount =
           parseParticipantCount(snapshot.body) ??
           (rosterSample?.currentParticipantNames?.length
-            ? rosterSample.currentParticipantNames.length
+            ? rosterSample.currentParticipantNames.length + 1
             : undefined);
         if (typeof participantCount === "number" && participantCount > 1) {
           seenOtherParticipant = true;
