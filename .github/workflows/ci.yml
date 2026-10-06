@@ -21,6 +21,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Verify meeting bot production dependencies
+        run: pnpm list --prod @playwright/test --depth 0
       - name: Check meeting bot scripts
         run: |
           for file in scripts/meeting-bot-*.mjs; do
