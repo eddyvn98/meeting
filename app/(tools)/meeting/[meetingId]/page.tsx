@@ -158,13 +158,21 @@ export default function MeetingResultPage() {
 			fetch(`/api/meeting/${meetingId}`, { cache: "no-store" })
 				.then((res) => (res.ok ? (res.json() as Promise<MeetingDetail>) : null))
 				.then((data) => {
-					if (cancelled || !data?.summary) return;
+					if (cancelled || !data) return;
+					const postprocessChanged =
+						data.enrichmentStatus !== detail.enrichmentStatus ||
+						data.diarizationStatus !== detail.diarizationStatus ||
+						data.enrichmentError !== detail.enrichmentError ||
+						data.diarizationError !== detail.diarizationError;
+					if (!data.summary && !postprocessChanged) return;
 					meetingDetailCache.set(meetingId, data);
 					setDetail(data);
-					// Same reasoning as the initial fetch above — this poll is
-					// exactly what catches an auto-title landing while you're
-					// already sitting on the page.
-					emitMeetingRenamed(meetingId, data.title);
+					if (data.summary) {
+						// Same reasoning as the initial fetch above — this poll
+						// catches an auto-title landing while you're already on
+						// the page.
+						emitMeetingRenamed(meetingId, data.title);
+					}
 				})
 				.catch(() => undefined);
 		}, 4000);
