@@ -81,7 +81,7 @@ export function createBotSessionRunner(config) {
       headless,
       env: { ...process.env, PULSE_SINK: sinkName },
       args: [
-        "--no-sandbox",
+        ...(process.env.MEETING_BOT_DISABLE_CHROMIUM_SANDBOX === "true" ? ["--no-sandbox"] : []),
         "--disable-dev-shm-usage",
         "--autoplay-policy=no-user-gesture-required",
         "--disable-features=AudioServiceOutOfProcess",
