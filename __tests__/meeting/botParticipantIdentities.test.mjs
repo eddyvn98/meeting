@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractEmailsFromText,
+  profileCardMatchesParticipant,
   teamsJoinIdentity,
 } from "../../scripts/meeting-bot-participant-identities.mjs";
 
@@ -30,5 +31,23 @@ describe("browser participant identity helpers", () => {
 
   it("rejects non-Teams links as meeting identities", () => {
     expect(teamsJoinIdentity("https://example.com/l/meetup-join/test")).toBeNull();
+  });
+  it("binds profile email extraction to the exact participant name", () => {
+    expect(profileCardMatchesParticipant(
+      "Ann Smith\nann@example.com\nGuest",
+      "Ann Smith",
+    )).toBe(true);
+    expect(profileCardMatchesParticipant(
+      "Ann Smith (Guest)\nann@example.com",
+      "Ann Smith",
+    )).toBe(true);
+    expect(profileCardMatchesParticipant(
+      "Joann Smith\njoann@example.com",
+      "Ann",
+    )).toBe(false);
+    expect(profileCardMatchesParticipant(
+      "Annette\nannette@example.com",
+      "Ann",
+    )).toBe(false);
   });
 });
