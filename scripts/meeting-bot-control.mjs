@@ -1,6 +1,13 @@
 import { errorCode } from "./meeting-bot-teams.mjs";
 
-export function createSessionControl({ api, emit, runnerId }) {
+export function createSessionControl({
+  api,
+  emit,
+  runnerId,
+  controlOutageGraceMs = 60_000,
+  now = Date.now,
+}) {
+  let controlFailureSince = null;
   function createHeartbeat(sessionId) {
     let acknowledgedStatus = "CLAIMED";
     let rememberedStatus = "CLAIMED";
@@ -60,8 +67,9 @@ export function createSessionControl({ api, emit, runnerId }) {
       const session = await api(
         `/api/meeting/bot-sessions/${encodeURIComponent(sessionId)}`,
       );
-      if (!session) return false;
+      if (!session) throw new Error("Bot session control response was empty.");
 
+      controlFailureSince = null;
       const leaseLost =
         session.runnerId !== runnerId ||
         ["REQUESTED", "ENDED", "FAILED"].includes(session.status);
@@ -76,6 +84,14 @@ export function createSessionControl({ api, emit, runnerId }) {
       return session.status === "STOP_REQUESTED";
     } catch (error) {
       if (errorCode(error) === "SESSION_LEASE_LOST") throw error;
+      controlFailureSince ??= now();
+      if (now() - controlFailureSince >= controlOutageGraceMs) {
+        const unavailable = new Error(
+          "Meeting bot control plane stayed unreachable past the safety grace period.",
+        );
+        unavailable.code = "CONTROL_PLANE_UNAVAILABLE";
+        throw unavailable;
+      }
       return false;
     }
   }
