@@ -1,4 +1,4 @@
-import { access } from "node:fs/promises";
+import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 export function resolveTeamsAuthMode(env = process.env) {
@@ -9,6 +9,22 @@ export function resolveTeamsAuthMode(env = process.env) {
     );
   }
   return mode;
+}
+
+export function authStateModeIsPrivate(mode) {
+  return (mode & 0o077) === 0;
+}
+
+async function assertPrivateAuthState(path) {
+  if (process.platform === "win32") return;
+  const info = await stat(path);
+  if (!authStateModeIsPrivate(info.mode)) {
+    const error = new Error(
+      `Meeting bot auth state must not be readable or writable by group/other users: ${path}. Run chmod 600 on the file.`,
+    );
+    error.code = "TEAMS_AUTH_STATE_PERMISSIONS";
+    throw error;
+  }
 }
 
 export function resolveTeamsAuthStatePath(env = process.env, cwd = process.cwd()) {
@@ -29,6 +45,7 @@ export async function getTeamsStorageState(env = process.env, cwd = process.cwd(
     error.code = "TEAMS_AUTH_STATE_MISSING";
     throw error;
   }
+  await assertPrivateAuthState(authStatePath);
   return authStatePath;
 }
 
@@ -42,8 +59,9 @@ export async function getIdentityStorageState(env = process.env, cwd = process.c
   const authStatePath = resolveIdentityAuthStatePath(env, cwd);
   try {
     await access(authStatePath);
-    return authStatePath;
   } catch {
     return undefined;
   }
+  await assertPrivateAuthState(authStatePath);
+  return authStatePath;
 }
