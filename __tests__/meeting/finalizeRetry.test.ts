@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   acceptsAudio,
+  canMarkCaptureInterrupted,
   CAPTURE_INTERRUPTED_PREFIX,
   FINALIZE_FAILURE_PREFIX,
   FINALIZING_PREFIX,
@@ -38,5 +39,20 @@ describe("meeting finalize retry states", () => {
     };
     expect(isFinalizeInProgress(meeting)).toBe(true);
     expect(acceptsAudio(meeting)).toBe(false);
+  });
+
+  it("only lets bot failure interrupt an open capture", () => {
+    expect(canMarkCaptureInterrupted({
+      status: "UPLOADING",
+      failureReason: null,
+    })).toBe(true);
+    expect(canMarkCaptureInterrupted({
+      status: "UPLOADING",
+      failureReason: `${FINALIZING_PREFIX}2026-10-06T08:00:00.000Z`,
+    })).toBe(false);
+    expect(canMarkCaptureInterrupted({
+      status: "PROCESSING",
+      failureReason: null,
+    })).toBe(false);
   });
 });
