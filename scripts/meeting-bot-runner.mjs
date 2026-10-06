@@ -36,6 +36,21 @@ const browserChannel = process.env.MEETING_BOT_BROWSER_CHANNEL || undefined;
 const browserExecutable = process.env.MEETING_BOT_BROWSER_EXECUTABLE || undefined;
 const headless = process.env.MEETING_BOT_HEADLESS !== "false";
 const requireMediaOff = process.env.MEETING_BOT_REQUIRE_MEDIA_OFF !== "false";
+const maxDurationMs = positiveNumber(
+  process.env.MEETING_BOT_MAX_DURATION_MS,
+  4 * 60 * 60_000,
+);
+const processingTimeoutMaxMs = positiveNumber(
+  process.env.MEETING_BOT_PROCESSING_TIMEOUT_MAX_MS,
+  90 * 60_000,
+);
+const recorderTokenHardCapMs = 24 * 60 * 60_000;
+const recorderTokenSafetyMs = maxDurationMs + 30 * 60_000 + processingTimeoutMaxMs;
+if (recorderTokenSafetyMs > recorderTokenHardCapMs) {
+  throw new Error(
+    "MEETING_BOT_MAX_DURATION_MS + finalize grace + MEETING_BOT_PROCESSING_TIMEOUT_MAX_MS exceeds the 24-hour recorder token cap.",
+  );
+}
 let shuttingDown = false;
 
 for (const signal of ["SIGTERM", "SIGINT"]) {
@@ -58,10 +73,7 @@ const recorderRuntime = createMeetingRecorderRuntime({
     process.env.MEETING_BOT_PROCESSING_TIMEOUT_MIN_MS,
     10 * 60_000,
   ),
-  processingTimeoutMaxMs: positiveNumber(
-    process.env.MEETING_BOT_PROCESSING_TIMEOUT_MAX_MS,
-    90 * 60_000,
-  ),
+  processingTimeoutMaxMs,
   processingTimeoutDefaultMs: positiveNumber(
     process.env.MEETING_BOT_PROCESSING_TIMEOUT_MS,
     45 * 60_000,
@@ -138,7 +150,7 @@ const sessionRunner = createBotSessionRunner({
     process.env.MEETING_BOT_INITIAL_ALONE_GRACE_MS,
     15 * 60_000,
   ),
-  maxDurationMs: positiveNumber(process.env.MEETING_BOT_MAX_DURATION_MS, 4 * 60 * 60_000),
+  maxDurationMs,
   audioInitialWarnMs: positiveNumber(
     process.env.MEETING_BOT_AUDIO_INITIAL_SIGNAL_MS,
     60_000,
