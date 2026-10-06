@@ -8,13 +8,15 @@ import {
   sameBotOccurrence,
 } from "@/lib/meeting/bot/sessionKeys";
 import {
-  canonicalEmail,
   cleanCalendarSyncKey,
   graphCalendarSourceKey,
   parseCalendarSyncDate,
   parseCalendarSyncPayload,
-  sanitizeCalendarAttendeeEmails,
 } from "@/lib/meeting/bot/calendarSyncPayload";
+import {
+  canonicalMeetingEmail,
+  sanitizeMeetingAttendeeEmails,
+} from "@/lib/meeting/bot/attendeeEmails";
 
 export const runtime = "nodejs";
 
@@ -84,8 +86,8 @@ export async function POST(req: NextRequest) {
     seenEventPrefixes.add(eventPrefix);
 
     const meetingUrl = normalizeTeamsMeetingUrl(item.meetingUrl);
-    const ownerEmail = canonicalEmail(item.ownerEmail);
-    const attendeeEmails = sanitizeCalendarAttendeeEmails(item.attendeeEmails);
+    const ownerEmail = canonicalMeetingEmail(item.ownerEmail);
+    const attendeeEmails = sanitizeMeetingAttendeeEmails(item.attendeeEmails);
     const organizerAllowed = item.organizerAllowed === true;
     const invited = item.invited === true;
     const unavailable =
