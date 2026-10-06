@@ -45,6 +45,22 @@ async function emailsFromLocator(locator, maxLinks = 100) {
   return [...result];
 }
 
+function normalizeParticipantLabel(value) {
+  return String(value ?? "")
+    .replace(/\((?:you|bạn|guest|khách)\)/gi, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase();
+}
+
+export function profileCardMatchesParticipant(cardText, participantName) {
+  const target = normalizeParticipantLabel(participantName);
+  if (!target) return false;
+  return String(cardText ?? "")
+    .split(/\r?\n/)
+    .some((line) => normalizeParticipantLabel(line) === target);
+}
+
 function visibleProfileContainers(page) {
   return page.locator([
     '[role="dialog"]:visible',
@@ -145,7 +161,7 @@ export async function readTeamsParticipantEmails(page, {
       const card = cards.nth(index);
       if (!await card.isVisible().catch(() => false)) continue;
       const cardText = await card.innerText().catch(() => "");
-      if (!cardText.toLocaleLowerCase().includes(name.toLocaleLowerCase())) continue;
+      if (!profileCardMatchesParticipant(cardText, name)) continue;
       mergeEmails(emails, await emailsFromLocator(card));
     }
 
