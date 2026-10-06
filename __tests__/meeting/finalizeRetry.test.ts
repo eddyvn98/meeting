@@ -3,6 +3,8 @@ import {
   acceptsAudio,
   CAPTURE_INTERRUPTED_PREFIX,
   FINALIZE_FAILURE_PREFIX,
+  FINALIZING_PREFIX,
+  isFinalizeInProgress,
   isRetryableFinalizeFailure,
 } from "../../lib/meeting/audio/finalizeRetry";
 
@@ -28,5 +30,13 @@ describe("meeting finalize retry states", () => {
       status: "FAILED",
       failureReason: "Transcription failed",
     })).toBe(false);
+  });
+  it("freezes new uploads while a finalize lease is active", () => {
+    const meeting = {
+      status: "UPLOADING",
+      failureReason: `${FINALIZING_PREFIX}2026-10-06T08:00:00.000Z`,
+    };
+    expect(isFinalizeInProgress(meeting)).toBe(true);
+    expect(acceptsAudio(meeting)).toBe(false);
   });
 });
