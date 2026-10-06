@@ -102,10 +102,12 @@ export async function readTeamsParticipantEmails(page, {
   ].join(",")).first();
   const rosterVisible = await roster.isVisible().catch(() => false);
   if (rosterVisible) {
-    const directEmails = await emailsFromLocator(roster);
-    mergeEmails(emails, directEmails);
+    // Do not scrape email-like text from the entire People panel. That text
+    // is not bound to a specific participant and attendeeEmails grants real
+    // viewer access. Only a participant profile card whose visible name
+    // matches the clicked roster entry may contribute a Teams-derived email.
     logIdentityDiagnostic(sessionId, "teams", "ROSTER_VISIBLE", {
-      directEmails: directEmails.length,
+      directEmailsAccepted: 0,
     });
   } else {
     logIdentityDiagnostic(sessionId, "teams", "ROSTER_NOT_VISIBLE", {}, "warn");
