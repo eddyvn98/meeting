@@ -45,6 +45,19 @@ export function isRecorderSessionActive(status: string): boolean {
  * It may never access bot administration, groups, notifications, other
  * meetings, or owner-wide collection APIs.
  */
+const RECORDER_MEETING_ROUTES = new Map<string, ReadonlySet<string>>([
+  ["audio", new Set(["GET"])],
+  ["chunks", new Set(["POST"])],
+  ["full-audio", new Set(["POST"])],
+  ["finalize", new Set(["POST"])],
+  ["live-transcript", new Set(["POST"])],
+  ["transcribe", new Set(["POST"])],
+  ["transcribe-fast", new Set(["POST"])],
+  ["transcribe-chunk", new Set(["POST"])],
+  ["diarize-chunk", new Set(["POST"])],
+  ["transcript", new Set(["POST"])],
+]);
+
 export function isBotRecorderRequestAllowed(
   pathname: string,
   method: string,
@@ -61,19 +74,21 @@ export function isBotRecorderRequestAllowed(
     return normalizedMethod === "POST";
   }
 
-  const match = pathname.match(/^\/api\/meeting\/([^/]+)(?:\/|$)/);
-  if (!match) return false;
-
-  const firstSegment = decodeURIComponent(match[1]);
-  if (RESERVED_MEETING_ROOTS.has(firstSegment)) return false;
-  if (!session.meetingId || firstSegment !== session.meetingId) return false;
-
-  // The bot-created meeting is disposable capture state, but deleting or
-  // renaming it is never part of the recorder pipeline. Keep root mutations
-  // human-only even though reads are needed for processing-status polling.
-  if (pathname === `/api/meeting/${encodeURIComponent(session.meetingId)}`) {
+  // Read-only access to the shared voice library is required by local
+  // diarization to label known speakers. Recorder tokens can never mutate it.
+  if (pathname === "/api/meeting/voice-profiles") {
     return normalizedMethod === "GET";
   }
 
-  return true;
+  const match = pathname.match(/^\/api\/meeting\/([^/]+)(?:\/([^/]+))?\/?$/);
+  if (!match) return false;
+
+  const meetingId = decodeURIComponent(match[1]);
+  if (RESERVED_MEETING_ROOTS.has(meetingId)) return false;
+  if (!session.meetingId || meetingId !== session.meetingId) return false;
+
+  const action = match[2];
+  if (!action) return normalizedMethod === "GET";
+
+  return RECORDER_MEETING_ROUTES.get(action)?.has(normalizedMethod) ?? false;
 }
