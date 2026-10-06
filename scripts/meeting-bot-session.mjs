@@ -569,6 +569,7 @@ export function createBotSessionRunner(config) {
       if (processingOutcome === "TIMEOUT") {
         await heartbeat.update("FAILED", {
           meetingId: recorder.meetingId,
+          meetingFailureScope: "PROCESSING",
           errorMessage: "Processing timed out. The recording was preserved and can be retried.",
         });
       } else if (processingOutcome === "FAILED") {
@@ -600,7 +601,9 @@ export function createBotSessionRunner(config) {
         await heartbeat.update("ENDED", { errorMessage }).catch(() => undefined);
       } else {
         await heartbeat.update("FAILED", {
-          ...(failedMeetingId ? { meetingId: failedMeetingId } : {}),
+          ...(failedMeetingId
+            ? { meetingId: failedMeetingId, meetingFailureScope: "CAPTURE" }
+            : {}),
           errorMessage,
         }).catch(() => undefined);
         if ([
