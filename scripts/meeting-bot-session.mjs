@@ -534,6 +534,15 @@ export function createBotSessionRunner(config) {
       }
       const recordedMs = Date.now() - captureStartedAtMs;
       const shutdownRequested = shouldShutdown();
+      // Stop adding audio as soon as the capture loop decides to end. Final
+      // roster/identity probes are bookkeeping and must not extend the actual
+      // recording after a user stop, max-duration boundary, or Teams end.
+      await recorderRuntime.pause(recorder).catch((error) => {
+        console.warn(
+          `[meeting-bot] session ${session.id} could not pause before final identity probes:`,
+          error instanceof Error ? error.message : error,
+        );
+      });
       await probeOutlookInvitees("meeting-end");
       await sampleRoster({ probeIdentities: true }).catch((error) => {
         logIdentityDiagnostic(session.id, "session", "FINAL_IDENTITY_PROBE_FAILED", {
