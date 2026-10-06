@@ -109,6 +109,10 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(
     meetings.map((m) => {
       const sharedWithMe = sharedWithMeSet.has(m.id);
+      const attendeeOnlyAccess =
+        m.ownerEmail.toLowerCase() !== callerEmail &&
+        attendeeMeetingIdSet.has(m.id) &&
+        !sharedGroupByMeeting.has(m.id);
       return {
         ...serializeMeeting(m),
         // A shared recipient's folder placement is personal. Never leak the
@@ -117,6 +121,7 @@ export async function GET(req: NextRequest) {
         isShared: ownedAndShared.has(m.id) || sharedWithMe,
         isLive: liveMeetingIds.has(m.id),
         sharedWithMe,
+        attendeeOnlyAccess,
       };
     }),
   );
