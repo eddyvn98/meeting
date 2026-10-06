@@ -11,7 +11,7 @@
 
 import { clearLocalMeetingData, listChunkMetaForMeeting, listUnfinishedSessions } from "./db";
 import { uploadChunkWithRetry } from "./uploadQueue";
-import { isFinalizeInProgress, isRetryableFinalizeFailure } from "../audio/finalizeRetry";
+import { isFinalizeInProgress, isFinalizeLeaseStale, isRetryableFinalizeFailure } from "../audio/finalizeRetry";
 import type { LocalChunkMeta, LocalMeetingSession } from "./types";
 
 export interface RecoveryCandidate {
@@ -34,8 +34,15 @@ async function checkServerState(meetingId: string): Promise<"recoverable" | "don
     if (!response.ok) return "unknown";
     const meeting = (await response.json()) as { status?: string; failureReason?: string | null; accessRole?: string };
     if (meeting.accessRole && meeting.accessRole !== "owner") return "foreign";
-    if (isFinalizeInProgress({ status: meeting.status ?? "", failureReason: meeting.failureReason ?? null })) return "unknown";
-    if (meeting.status === "UPLOADING" || isRetryableFinalizeFailure({ status: meeting.status ?? "", failureReason: meeting.failureReason ?? null })) return "recoverable";
+    const finalizeState = {
+      status: meeting.status ?? "",
+      failureReason: meeting.failureReason ?? null,
+    };
+    if (isFinalizeInProgress(finalizeState) && !isFinalizeLeaseStale(finalizeState)) return "unknown";
+    if (
+      meeting.status === "UPLOADING" ||
+      isRetryableFinalizeFailure(finalizeState)
+    ) return "recoverable";
     // A terminal FAILED (after a successful merge) cannot be finalized again, so
     // keep the local copy but do not offer it. READY/PROCESSING: the server has it.
     return meeting.status === "FAILED" ? "failed" : "done";
