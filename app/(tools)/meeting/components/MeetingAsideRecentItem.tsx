@@ -161,7 +161,7 @@ export function MeetingAsideRecentItem({
 			}`}
 		>
 			<Link
-				href={meeting.status === "READY" ? `/meeting/${meeting.id}` : `/meeting/${meeting.id}/processing`}
+				href={meeting.isLive || meeting.status === "READY" ? `/meeting/${meeting.id}` : `/meeting/${meeting.id}/processing`}
 				className="flex min-w-0 flex-1 items-center gap-2"
 			>
 				{expiry && retentionDays !== null ? (
@@ -172,6 +172,11 @@ export function MeetingAsideRecentItem({
 				<span className="min-w-0 flex-1 truncate" title={meeting.title}>
 					{meeting.title}
 				</span>
+				{meeting.isLive && (
+					<span className="shrink-0 rounded-full bg-red-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
+						Live
+					</span>
+				)}
 				{meeting.isShared && (
 					<span title={meeting.sharedWithMe ? "Shared with you" : "Shared"} className="inline-flex shrink-0">
 						<Share2 className="h-3 w-3 text-muted-foreground" />
