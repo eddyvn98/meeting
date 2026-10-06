@@ -129,12 +129,15 @@ export function createBotSessionRunner(config) {
       let nextIdentityProbeAt = 0;
       let identityProbeAttempts = 0;
       let identityWarningIssued = false;
+      let identityDirty = false;
 
       const mergeAttendeeEmails = (emails) => {
+        const before = attendeeEmails.size;
         for (const value of emails || []) {
           const email = typeof value === "string" ? value.trim().toLowerCase() : "";
           if (email) attendeeEmails.add(email);
         }
+        if (attendeeEmails.size > before) identityDirty = true;
       };
 
       // Authenticated mode can reuse the same Microsoft browser session in a
@@ -318,12 +321,15 @@ export function createBotSessionRunner(config) {
           exitMessage = error instanceof Error ? error.message : "The bot was removed during audio recovery.";
           break;
         }
-        const persistRoster = nowMs >= nextRosterPersistAt;
+        const persistRoster = nowMs >= nextRosterPersistAt || identityDirty;
         await heartbeat.update("CAPTURING", {
           meetingId: recorder.meetingId,
           ...(persistRoster ? rosterPayload() : {}),
         });
-        if (persistRoster) nextRosterPersistAt = nowMs + ROSTER_PERSIST_MS;
+        if (persistRoster) {
+          nextRosterPersistAt = nowMs + ROSTER_PERSIST_MS;
+          identityDirty = false;
+        }
         await sleep(pollMs);
       }
       const recordedMs = Date.now() - captureStartedAtMs;
