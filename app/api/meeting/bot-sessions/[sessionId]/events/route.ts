@@ -5,6 +5,7 @@ import { MEETING_BOT_STATUSES, type MeetingBotEventInput } from "@/lib/meeting/b
 import { serializeMeetingBotSession } from "@/lib/meeting/bot/serialize";
 import { maybePruneTerminalBotSessions } from "@/lib/meeting/bot/pruneBotSessions";
 import { parseSpeakerObservations, sanitizeParticipantNames } from "@/lib/meeting/bot/rosterMapping";
+import { sanitizeMeetingAttendeeEmails } from "@/lib/meeting/bot/attendeeEmails";
 import type { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
@@ -37,11 +38,18 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
   if (body.participantNames !== undefined && !Array.isArray(body.participantNames)) {
     return NextResponse.json({ error: "participantNames must be an array." }, { status: 400 });
   }
+  if (body.attendeeEmails !== undefined && !Array.isArray(body.attendeeEmails)) {
+    return NextResponse.json({ error: "attendeeEmails must be an array." }, { status: 400 });
+  }
   if (body.speakerObservations !== undefined && !Array.isArray(body.speakerObservations)) {
     return NextResponse.json({ error: "speakerObservations must be an array." }, { status: 400 });
   }
   const participantNames =
     body.participantNames === undefined ? undefined : sanitizeParticipantNames(body.participantNames);
+  const attendeeEmails =
+    body.attendeeEmails === undefined
+      ? undefined
+      : sanitizeMeetingAttendeeEmails([...session.attendeeEmails, ...body.attendeeEmails]);
   const speakerObservations =
     body.speakerObservations === undefined ? undefined : parseSpeakerObservations(body.speakerObservations);
 
@@ -63,6 +71,7 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
         runnerId: session.runnerId ?? runnerId(req),
         meetingId: meetingId ?? undefined,
         participantNames,
+        attendeeEmails,
         speakerObservations:
           speakerObservations === undefined
             ? undefined
