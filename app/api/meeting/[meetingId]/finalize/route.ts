@@ -5,10 +5,31 @@ import { resolveMeetingCallerEmail } from "../../_auth";
 import { serializeMeeting } from "@/lib/meeting/serialize";
 import { mergeAudioChunks, splitReadableChunks } from "@/lib/meeting/audio/mergeAudioChunks";
 import { findFullAudio, mergedAudioPath } from "@/lib/meeting/audio/paths";
-import { acceptsAudio, isRetryableFinalizeFailure, FINALIZE_FAILURE_PREFIX } from "@/lib/meeting/audio/finalizeRetry";
+import {
+  acceptsAudio,
+  finalizeLeaseStartedAt,
+  FINALIZE_FAILURE_PREFIX,
+  FINALIZING_PREFIX,
+  isFinalizeInProgress,
+  isRetryableFinalizeFailure,
+} from "@/lib/meeting/audio/finalizeRetry";
 import { pruneRawChunksAfterMerge } from "@/lib/meeting/audio/cleanupMeetingAudio";
 
-/** Finalize only after every declared chunk and backing file is present. */
+const DEFAULT_FINALIZE_LEASE_MS = 20 * 60_000;
+
+function finalizeLeaseMs(): number {
+  const configured = Number(process.env.MEETING_FINALIZE_LEASE_MS);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_FINALIZE_LEASE_MS;
+}
+
+/**
+ * Finalization uses a short database transaction only to claim a per-meeting
+ * finalize lease and freeze new uploads. Slow filesystem/ffmpeg work then runs
+ * outside the transaction. This avoids holding a database connection and
+ * advisory transaction lock for multi-minute recordings.
+ */
 export async function POST(req: NextRequest, { params }: { params: { meetingId: string } }) {
   const email = await resolveMeetingCallerEmail(req);
   if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -17,11 +38,17 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
   try {
     body = await req.json();
   } catch {
-    // Empty body remains valid for the one-file upload flow.
+    // Empty body remains valid for one-file uploads and recovery retries.
   }
-  const requestedExpected = typeof body.expectedChunkCount === "number" ? Math.trunc(body.expectedChunkCount) : undefined;
+  const requestedExpected =
+    typeof body.expectedChunkCount === "number"
+      ? Math.trunc(body.expectedChunkCount)
+      : undefined;
   if (requestedExpected !== undefined && (requestedExpected < 1 || requestedExpected > 100_000)) {
-    return NextResponse.json({ error: "expectedChunkCount must be a positive integer" }, { status: 400 });
+    return NextResponse.json(
+      { error: "expectedChunkCount must be a positive integer" },
+      { status: 400 },
+    );
   }
 
   const meeting = await prisma.meeting.findUnique({ where: { id: params.meetingId } });
@@ -29,10 +56,12 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const fullCandidate = await findFullAudio(meeting.id);
+  const leaseReason = `${FINALIZING_PREFIX}${new Date().toISOString()}`;
   let skippedParts = 0;
+
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      // Cross-instance lock: uploads and finalize for one meeting are serialized.
+    const claim = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-audio:${meeting.id}`}))`;
       const lockedMeeting = await tx.meeting.findUnique({ where: { id: meeting.id } });
       if (!lockedMeeting) throw new Error("Meeting not found");
@@ -40,7 +69,15 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
       if (lockedMeeting.status === "READY" || lockedMeeting.status === "PROCESSING") {
         return { kind: "already-finalized" as const, meeting: lockedMeeting };
       }
-      if (!acceptsAudio(lockedMeeting)) {
+
+      if (isFinalizeInProgress(lockedMeeting)) {
+        const startedAt = finalizeLeaseStartedAt(lockedMeeting);
+        const stale =
+          startedAt === null || Date.now() - startedAt >= finalizeLeaseMs();
+        if (!stale) {
+          return { kind: "in-progress" as const, meeting: lockedMeeting };
+        }
+      } else if (!acceptsAudio(lockedMeeting)) {
         return { kind: "already-finalized" as const, meeting: lockedMeeting };
       }
 
@@ -49,40 +86,23 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
         orderBy: { sequence: "asc" },
       });
 
-      // The continuous recording uploaded at End Meeting, when readable, IS the
-      // recording: no joins, so no dropouts, and no dependence on every chunk
-      // having arrived. An unreadable or missing one falls back to the chunks.
-      const fullPath = await findFullAudio(lockedMeeting.id);
-      if (fullPath && (await splitReadableChunks([fullPath])).readable.length === 1) {
-        // Re-encode to the standard file; if that fails, the original is served as is.
-        const encoded = await mergeAudioChunks([fullPath], mergedAudioPath(lockedMeeting.id), { allowSingle: true });
-        if (!encoded.success) console.warn("[meeting] finalize: could not re-encode the continuous recording, serving it as uploaded:", encoded.error);
-        const summedSec = chunks.reduce((sum, chunk) => sum + (chunk.durationSec ?? 0), 0);
-        const updated = await tx.meeting.update({
-          where: { id: lockedMeeting.id },
-          data: {
-            status: "PROCESSING",
-            durationSec: lockedMeeting.durationSec ?? (summedSec > 0 ? summedSec : null),
-            failureReason: null,
-            audioUrl: `/api/meeting/${lockedMeeting.id}/audio`,
-          },
-        });
-        // The chunks are redundant once the continuous file is encoded; keep them if it was not.
-        return { kind: "started" as const, meeting: updated, merged: encoded.success, usedFull: true };
-      }
-      // The old whole-file upload has exactly one chunk; live recordings must
-      // send the explicit count so a partial recording cannot be finalized.
-      // A retry of a failed finalize has no browser count to send (it may come
-      // from another device): the chunks already stored are the recording, and
-      // the contiguity check below still rejects a gap.
-      const expectedChunkCount = requestedExpected ?? (chunks.length === 1 || isRetryableFinalizeFailure(lockedMeeting) ? chunks.length || undefined : undefined);
+      const expectedChunkCount =
+        requestedExpected ??
+        (chunks.length === 1 || isRetryableFinalizeFailure(lockedMeeting)
+          ? chunks.length || undefined
+          : undefined);
       const missingSequences = expectedChunkCount
         ? Array.from({ length: expectedChunkCount }, (_, sequence) => sequence).filter(
-            (sequence) => chunks.find((chunk) => chunk.sequence === sequence)?.status !== "UPLOADED",
+            (sequence) =>
+              chunks.find((chunk) => chunk.sequence === sequence)?.status !== "UPLOADED",
           )
         : [];
 
-      if (!expectedChunkCount || chunks.length !== expectedChunkCount || missingSequences.length > 0) {
+      const chunkSetComplete =
+        Boolean(expectedChunkCount) &&
+        chunks.length === expectedChunkCount &&
+        missingSequences.length === 0;
+      if (!chunkSetComplete && !fullCandidate) {
         return {
           kind: "incomplete" as const,
           meeting: lockedMeeting,
@@ -93,91 +113,189 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
       }
 
       const orderedPaths = chunks.map((chunk) => chunk.storageUrl);
-      if (orderedPaths.some((path) => !path)) {
+      const missingStorageSequences = chunks
+        .filter((chunk) => !chunk.storageUrl)
+        .map((chunk) => chunk.sequence);
+      if (missingStorageSequences.length > 0 && !fullCandidate) {
         return {
           kind: "incomplete" as const,
           meeting: lockedMeeting,
-          expectedChunkCount,
+          expectedChunkCount: expectedChunkCount ?? null,
           receivedChunkCount: chunks.length,
-          missingSequences: chunks.filter((chunk) => !chunk.storageUrl).map((chunk) => chunk.sequence),
+          missingSequences: missingStorageSequences,
         };
       }
 
-      const missingFiles = (await Promise.all(orderedPaths.map((path) => stat(path!).catch(() => null))))
-        .map((fileStat, index) => (fileStat ? null : chunks[index].sequence))
-        .filter((sequence): sequence is number => sequence !== null);
-      if (missingFiles.length > 0) {
-        return {
-          kind: "incomplete" as const,
-          meeting: lockedMeeting,
-          expectedChunkCount,
-          receivedChunkCount: chunks.length,
-          missingSequences: missingFiles,
-        };
-      }
-
-      const summedDurationSec = chunks.reduce((sum, chunk) => sum + (chunk.durationSec ?? 0), 0);
-      const durationSec = lockedMeeting.durationSec ?? (summedDurationSec > 0 ? summedDurationSec : null);
-
-      if (chunks.length > 1) {
-        // One unreadable part would fail the whole merge. Merge the readable
-        // ones instead, so a damaged part costs seconds of audio, not the meeting.
-        const split = await splitReadableChunks(orderedPaths as string[]);
-        if (split.unreadable.length > 0) {
-          console.warn(`[meeting] finalize ${lockedMeeting.id}: skipping ${split.unreadable.length} unreadable audio part(s):`, split.unreadable);
-          skippedParts = split.unreadable.length;
-        }
-        if (split.readable.length === 0) throw new Error("None of the audio parts could be read. They are kept so they can be downloaded.");
-        const merged = await mergeAudioChunks(split.readable, mergedAudioPath(lockedMeeting.id), { allowSingle: true });
-        if (!merged.success) throw new Error(`Failed to merge all audio chunks safely: ${merged.error}`);
-      }
-
-      const updated = await tx.meeting.update({
+      const claimed = await tx.meeting.update({
         where: { id: lockedMeeting.id },
         data: {
-          status: "PROCESSING",
-          durationSec,
-          failureReason: null,
-          audioUrl: `/api/meeting/${lockedMeeting.id}/audio`,
+          status: "UPLOADING",
+          failureReason: leaseReason,
         },
       });
-      return { kind: "started" as const, meeting: updated, merged: chunks.length > 1, usedFull: false };
-    }, { maxWait: 15_000, timeout: 10 * 60 * 1000 });
 
-    if (result.kind === "incomplete") {
+      return {
+        kind: "claimed" as const,
+        meeting: claimed,
+        chunks,
+        orderedPaths: orderedPaths.filter((path): path is string => Boolean(path)),
+        chunkSetComplete: chunkSetComplete && missingStorageSequences.length === 0,
+      };
+    }, { maxWait: 15_000, timeout: 30_000 });
+
+    if (claim.kind === "in-progress") {
+      return NextResponse.json(
+        { error: "Recording finalization is already in progress", code: "FINALIZE_IN_PROGRESS" },
+        { status: 409 },
+      );
+    }
+
+    if (claim.kind === "incomplete") {
       return NextResponse.json(
         {
           error: "Waiting for all audio chunks",
           code: "WAITING_FOR_CHUNKS",
-          expectedChunkCount: result.expectedChunkCount,
-          receivedChunkCount: result.receivedChunkCount,
-          missingSequences: result.missingSequences,
+          expectedChunkCount: claim.expectedChunkCount,
+          receivedChunkCount: claim.receivedChunkCount,
+          missingSequences: claim.missingSequences,
         },
         { status: 409 },
       );
     }
-    // The raw chunks are only redundant once the merged file AND the status
-    // change are committed. Pruning inside the transaction could delete them
-    // and then lose the commit, leaving a meeting with no usable audio.
-    if (result.kind === "started" && result.merged) await pruneRawChunksAfterMerge(meeting.id);
-    // A continuous recording that could not be read was passed over for the chunks: drop it.
-    if (result.kind === "started" && !result.usedFull) {
+
+    if (claim.kind === "already-finalized") {
+      return NextResponse.json({ ...serializeMeeting(claim.meeting), skippedParts });
+    }
+
+    const chunks = claim.chunks;
+    const orderedPaths = claim.orderedPaths;
+    let merged = false;
+    let usedFull = false;
+
+    const fullPath = fullCandidate;
+    if (fullPath && (await splitReadableChunks([fullPath])).readable.length === 1) {
+      const encoded = await mergeAudioChunks(
+        [fullPath],
+        mergedAudioPath(meeting.id),
+        { allowSingle: true },
+      );
+      if (!encoded.success) {
+        console.warn(
+          "[meeting] finalize: could not re-encode the continuous recording, serving it as uploaded:",
+          encoded.error,
+        );
+      }
+      merged = encoded.success;
+      usedFull = true;
+    } else {
+      if (!claim.chunkSetComplete) {
+        await prisma.meeting.updateMany({
+          where: { id: meeting.id, status: "UPLOADING", failureReason: leaseReason },
+          data: { failureReason: null },
+        });
+        return NextResponse.json(
+          {
+            error: "Waiting for all audio chunks",
+            code: "WAITING_FOR_CHUNKS",
+            expectedChunkCount: requestedExpected ?? null,
+            receivedChunkCount: chunks.length,
+            missingSequences: [],
+          },
+          { status: 409 },
+        );
+      }
+      const missingFiles = (
+        await Promise.all(orderedPaths.map((path) => stat(path).catch(() => null)))
+      )
+        .map((fileStat, index) => (fileStat ? null : chunks[index].sequence))
+        .filter((sequence): sequence is number => sequence !== null);
+      if (missingFiles.length > 0) {
+        throw new Error(`Audio files disappeared before finalization: ${missingFiles.join(", ")}`);
+      }
+
+      if (chunks.length > 1) {
+        const split = await splitReadableChunks(orderedPaths);
+        if (split.unreadable.length > 0) {
+          console.warn(
+            `[meeting] finalize ${meeting.id}: skipping ${split.unreadable.length} unreadable audio part(s):`,
+            split.unreadable,
+          );
+          skippedParts = split.unreadable.length;
+        }
+        if (split.readable.length === 0) {
+          throw new Error(
+            "None of the audio parts could be read. They are kept so they can be downloaded.",
+          );
+        }
+        const mergedResult = await mergeAudioChunks(
+          split.readable,
+          mergedAudioPath(meeting.id),
+          { allowSingle: true },
+        );
+        if (!mergedResult.success) {
+          throw new Error(`Failed to merge all audio chunks safely: ${mergedResult.error}`);
+        }
+        merged = true;
+      }
+    }
+
+    const summedDurationSec = chunks.reduce(
+      (sum, chunk) => sum + (chunk.durationSec ?? 0),
+      0,
+    );
+    const durationSec =
+      claim.meeting.durationSec ?? (summedDurationSec > 0 ? summedDurationSec : null);
+
+    const committed = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-audio:${meeting.id}`}))`;
+      const updated = await tx.meeting.updateMany({
+        where: {
+          id: meeting.id,
+          status: "UPLOADING",
+          failureReason: leaseReason,
+        },
+        data: {
+          status: "PROCESSING",
+          durationSec,
+          failureReason: null,
+          audioUrl: `/api/meeting/${meeting.id}/audio`,
+        },
+      });
+      if (updated.count !== 1) {
+        throw new Error("Finalize lease was lost before the recording could be committed.");
+      }
+      const fresh = await tx.meeting.findUnique({ where: { id: meeting.id } });
+      if (!fresh) throw new Error("Meeting not found after finalization.");
+      return fresh;
+    }, { maxWait: 15_000, timeout: 30_000 });
+
+    if (merged) await pruneRawChunksAfterMerge(meeting.id);
+    if (!usedFull) {
       const unusable = await findFullAudio(meeting.id);
       if (unusable) await rm(unusable, { force: true });
     }
-    return NextResponse.json({ ...serializeMeeting(result.meeting), skippedParts });
+
+    return NextResponse.json({ ...serializeMeeting(committed), skippedParts });
   } catch (err) {
-    // Marked FAILED so the failure is visible, but tagged as retryable: every
-    // chunk is still on disk and in the browser, so the same call can simply be
-    // repeated (see lib/meeting/audio/finalizeRetry.ts). The tag keeps the
-    // audio from being swept and the local backup from being discarded.
     const reason = err instanceof Error ? err.message : "Failed to prepare the recording.";
     console.warn("[meeting] finalize failed, meeting stays retryable:", reason);
-    await prisma.meeting
-      .update({ where: { id: meeting.id }, data: { status: "FAILED", failureReason: `${FINALIZE_FAILURE_PREFIX}${reason}` } })
-      .catch(() => undefined);
+    await prisma.meeting.updateMany({
+      where: {
+        id: meeting.id,
+        status: "UPLOADING",
+        failureReason: leaseReason,
+      },
+      data: {
+        status: "FAILED",
+        failureReason: `${FINALIZE_FAILURE_PREFIX}${reason}`,
+      },
+    }).catch(() => undefined);
     return NextResponse.json(
-      { error: "The recording could not be finalized yet. Your audio is saved; try again.", code: "FINALIZE_RETRYABLE", detail: reason },
+      {
+        error: "The recording could not be finalized yet. Your audio is saved; try again.",
+        code: "FINALIZE_RETRYABLE",
+        detail: reason,
+      },
       { status: 500 },
     );
   }

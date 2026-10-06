@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { encode } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
 import { isBotRunnerRequest, runnerId } from "../_auth";
+import { recorderTokenTtlSec } from "@/lib/meeting/bot/recorderTokenTtl";
 
 export const runtime = "nodejs";
 
 const ACTIVE = ["CLAIMED", "JOINING", "LOBBY", "JOINED", "CAPTURING", "STOP_REQUESTED"] as const;
-const TOKEN_TTL_SEC = 6 * 60 * 60;
-
 /** Issues a short-lived NextAuth session token to the authenticated runner.
  * The runner never needs NEXTAUTH_SECRET itself; only the web server signs
  * this scoped bot identity after verifying ownership of the claimed session. */
@@ -36,6 +35,7 @@ export async function POST(req: NextRequest) {
   }
 
   const now = Math.floor(Date.now() / 1000);
+  const tokenTtlSec = recorderTokenTtlSec();
   const email = session.ownerEmail.trim().toLowerCase();
   const token = await encode({
     token: {
@@ -47,16 +47,16 @@ export async function POST(req: NextRequest) {
       isDevSession: true,
       meetingBotSessionId: session.id,
       iat: now,
-      exp: now + TOKEN_TTL_SEC,
+      exp: now + tokenTtlSec,
     },
     secret,
-    maxAge: TOKEN_TTL_SEC,
+    maxAge: tokenTtlSec,
   });
 
   const secure = req.nextUrl.protocol === "https:";
   return NextResponse.json({
     token,
     cookieName: secure ? "__Secure-next-auth.session-token" : "next-auth.session-token",
-    expiresAt: new Date((now + TOKEN_TTL_SEC) * 1000).toISOString(),
+    expiresAt: new Date((now + tokenTtlSec) * 1000).toISOString(),
   });
 }

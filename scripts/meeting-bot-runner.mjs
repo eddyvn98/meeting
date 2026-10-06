@@ -7,7 +7,9 @@ import {
 import { createCalendarSync, hasCalendarConfig } from "./meeting-bot-calendar.mjs";
 import { computeProcessingTimeoutMs } from "./meeting-bot-lifecycle.mjs";
 import { createMeetingRecorderRuntime } from "./meeting-bot-recorder.mjs";
+import { cleanupStalePulseAudioModules } from "./meeting-bot-audio.mjs";
 import { createBotSessionRunner } from "./meeting-bot-session.mjs";
+import { pruneIdentityDebugArtifacts } from "./meeting-bot-identity-diagnostics.mjs";
 
 const baseUrl = requiredEnv("MEETING_BOT_BASE_URL").replace(/\/$/, "");
 const runnerToken = requiredEnv("MEETING_BOT_RUNNER_TOKEN");
@@ -149,6 +151,14 @@ const sessionRunner = createBotSessionRunner({
     process.env.MEETING_BOT_CONTROL_OUTAGE_GRACE_MS,
     60_000,
   ),
+  shutdownFinalizeTimeoutMs: positiveNumber(
+    process.env.MEETING_BOT_SHUTDOWN_FINALIZE_TIMEOUT_MS,
+    45_000,
+  ),
+  controlOutageFinalizeTimeoutMs: positiveNumber(
+    process.env.MEETING_BOT_CONTROL_OUTAGE_FINALIZE_TIMEOUT_MS,
+    90_000,
+  ),
   shouldShutdown: () => shuttingDown,
   identityStorageState: undefined,
 });
@@ -162,6 +172,16 @@ async function main() {
     throw new Error(
       "MEETING_BOT_HEADLESS=false requires DISPLAY or WAYLAND_DISPLAY. Use headless mode for unattended Linux.",
     );
+  }
+
+  const prunedDebugArtifacts = await pruneIdentityDebugArtifacts().catch(() => 0);
+  if (prunedDebugArtifacts > 0) {
+    console.log(`[meeting-bot] pruned ${prunedDebugArtifacts} expired identity diagnostic screenshot(s).`);
+  }
+
+  const cleanedPulseModules = await cleanupStalePulseAudioModules();
+  if (cleanedPulseModules > 0) {
+    console.log(`[meeting-bot] cleaned ${cleanedPulseModules} stale PulseAudio module(s) from dead runners.`);
   }
 
   const teamsStorageState = await getTeamsStorageState();

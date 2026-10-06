@@ -11,12 +11,27 @@
  */
 
 export const FINALIZE_FAILURE_PREFIX = "Finalize failed (your audio is saved, finalize again): ";
+export const CAPTURE_INTERRUPTED_PREFIX = "Capture interrupted (uploaded audio is saved, finalize available audio): ";
+export const FINALIZING_PREFIX = "Finalizing recording since: ";
+
+export function isFinalizeInProgress(meeting: { status: string; failureReason: string | null }): boolean {
+  return meeting.status === "UPLOADING" && Boolean(meeting.failureReason?.startsWith(FINALIZING_PREFIX));
+}
+
+export function finalizeLeaseStartedAt(meeting: { failureReason: string | null }): number | null {
+  if (!meeting.failureReason?.startsWith(FINALIZING_PREFIX)) return null;
+  const value = Date.parse(meeting.failureReason.slice(FINALIZING_PREFIX.length).trim());
+  return Number.isFinite(value) ? value : null;
+}
 
 export function isRetryableFinalizeFailure(meeting: { status: string; failureReason: string | null }): boolean {
-  return meeting.status === "FAILED" && Boolean(meeting.failureReason?.startsWith(FINALIZE_FAILURE_PREFIX));
+  if (meeting.status !== "FAILED" || !meeting.failureReason) return false;
+  return meeting.failureReason.startsWith(FINALIZE_FAILURE_PREFIX) ||
+    meeting.failureReason.startsWith(CAPTURE_INTERRUPTED_PREFIX);
 }
 
 /** True while the meeting may still receive audio chunks and be finalized. */
 export function acceptsAudio(meeting: { status: string; failureReason: string | null }): boolean {
-  return meeting.status === "UPLOADING" || isRetryableFinalizeFailure(meeting);
+  return (meeting.status === "UPLOADING" && !isFinalizeInProgress(meeting)) ||
+    isRetryableFinalizeFailure(meeting);
 }

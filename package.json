@@ -52,10 +52,10 @@
     "sonner": "^1.7.1",
     "tailwind-merge": "^2.5.5",
     "zod": "^3.24.1",
-    "zustand": "latest"
+    "zustand": "latest",
+    "@playwright/test": "^1.60.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
     "@types/fluent-ffmpeg": "^2.1.28",
     "@types/node": "22.19.17",
     "@types/react": "^18",

@@ -86,8 +86,11 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
   const durationSec = asInt(form.get("durationSec"));
   const sizeBytes = asInt(form.get("sizeBytes")) ?? buffer.byteLength;
 
+  await writeFile(tempPath, buffer, { flag: "wx" });
   const chunk = await prisma.$transaction(async (tx) => {
-    // Serialize uploads and finalize for one meeting across all Node instances.
+    // The potentially slow body/file write happened before this transaction.
+    // The advisory lock now only protects the final rename + DB upsert from
+    // racing with the finalize lease.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-audio:${meeting.id}`}))`;
     const lockedMeeting = await tx.meeting.findUnique({ where: { id: meeting.id } });
     if (!lockedMeeting || lockedMeeting.ownerEmail.toLowerCase() !== email.toLowerCase()) {
@@ -96,31 +99,26 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     if (!acceptsAudio(lockedMeeting)) {
       throw new MeetingClosedError();
     }
-    try {
-      await writeFile(tempPath, buffer, { flag: "wx" });
-      await rename(tempPath, targetPath);
-      return await tx.audioChunk.upsert({
-        where: { meetingId_sequence: { meetingId: lockedMeeting.id, sequence } },
-        create: {
-          meetingId: lockedMeeting.id,
-          sequence,
-          storageUrl: targetPath,
-          durationSec,
-          sizeBytes,
-          status: "UPLOADED",
-        },
-        update: {
-          storageUrl: targetPath,
-          durationSec,
-          sizeBytes,
-          status: "UPLOADED",
-        },
-      });
-    } catch (error) {
-      await rm(tempPath, { force: true }).catch(() => undefined);
-      throw error;
-    }
-  }, { maxWait: 15_000, timeout: 120_000 }).catch((error) => {
+    await rename(tempPath, targetPath);
+    return tx.audioChunk.upsert({
+      where: { meetingId_sequence: { meetingId: lockedMeeting.id, sequence } },
+      create: {
+        meetingId: lockedMeeting.id,
+        sequence,
+        storageUrl: targetPath,
+        durationSec,
+        sizeBytes,
+        status: "UPLOADED",
+      },
+      update: {
+        storageUrl: targetPath,
+        durationSec,
+        sizeBytes,
+        status: "UPLOADED",
+      },
+    });
+  }, { maxWait: 15_000, timeout: 30_000 }).catch(async (error) => {
+    await rm(tempPath, { force: true }).catch(() => undefined);
     if (error instanceof MeetingClosedError) return null;
     throw error;
   });

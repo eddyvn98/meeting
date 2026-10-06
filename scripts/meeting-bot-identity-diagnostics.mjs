@@ -1,8 +1,12 @@
-import { mkdir } from "node:fs/promises";
+import { chmod, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const DEBUG_ARTIFACTS = process.env.MEETING_BOT_DEBUG_ARTIFACTS === "true";
 const DEBUG_DIR = resolve(process.env.MEETING_BOT_DEBUG_DIR?.trim() || ".meeting-bot-debug");
+const DEBUG_RETENTION_MS = (() => {
+  const configured = Number(process.env.MEETING_BOT_DEBUG_RETENTION_MS);
+  return Number.isFinite(configured) && configured >= 0 ? configured : 24 * 60 * 60_000;
+})();
 
 function cleanToken(value) {
   return String(value ?? "")
@@ -34,13 +38,15 @@ export function logIdentityDiagnostic(sessionId, source, code, details = {}, lev
 export async function captureIdentityScreenshot(page, sessionId, label) {
   if (!DEBUG_ARTIFACTS || !page || page.isClosed()) return null;
   try {
-    await mkdir(DEBUG_DIR, { recursive: true });
+    await mkdir(DEBUG_DIR, { recursive: true, mode: 0o700 });
+    await chmod(DEBUG_DIR, 0o700);
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const path = resolve(
       DEBUG_DIR,
       `${cleanToken(sessionId)}-${stamp}-${cleanToken(label)}.png`,
     );
     await page.screenshot({ path, fullPage: true });
+    await chmod(path, 0o600);
     logIdentityDiagnostic(sessionId, "diagnostics", "SCREENSHOT_SAVED", { path });
     return path;
   } catch (error) {
@@ -53,6 +59,22 @@ export async function captureIdentityScreenshot(page, sessionId, label) {
     );
     return null;
   }
+}
+
+export async function pruneIdentityDebugArtifacts(nowMs = Date.now()) {
+  if (!DEBUG_ARTIFACTS || DEBUG_RETENTION_MS === 0) return 0;
+  await mkdir(DEBUG_DIR, { recursive: true, mode: 0o700 });
+  await chmod(DEBUG_DIR, 0o700);
+  const entries = await readdir(DEBUG_DIR, { withFileTypes: true }).catch(() => []);
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".png")) continue;
+    const path = resolve(DEBUG_DIR, entry.name);
+    const info = await stat(path).catch(() => null);
+    if (!info || nowMs - info.mtimeMs < DEBUG_RETENTION_MS) continue;
+    if (await rm(path, { force: true }).then(() => true).catch(() => false)) removed += 1;
+  }
+  return removed;
 }
 
 export function identityDebugArtifactsEnabled() {
