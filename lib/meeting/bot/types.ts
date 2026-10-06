@@ -64,5 +64,6 @@ export interface MeetingBotEventInput {
   meetingId?: string;
   errorMessage?: string;
   participantNames?: string[];
+  attendeeEmails?: string[];
   speakerObservations?: MeetingBotSpeakerObservation[];
 }
