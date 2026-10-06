@@ -24,6 +24,15 @@ export function mergedAudioPath(meetingId: string): string {
   return join(meetingAudioDir(meetingId), "merged.m4a");
 }
 
+/** Private output path for one finalize lease. A stale lease may be reclaimed
+ * while the old ffmpeg process is still finishing, so workers must never
+ * encode directly into the shared merged.m4a path. Only the lease winner
+ * promotes its private file to merged.m4a under the advisory DB lock. */
+export function finalizeWorkAudioPath(meetingId: string, finalizeId: string): string {
+  const safeId = finalizeId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80);
+  return join(meetingAudioDir(meetingId), `.finalize-${safeId || "unknown"}.m4a`);
+}
+
 /** The continuous recording the browser uploads in one piece at End Meeting
  *  (`full.<ext>`, extension from the browser's own format). Unlike the merged
  *  chunks it has no joins, so it plays without dropouts. null when none. */
