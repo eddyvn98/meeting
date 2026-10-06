@@ -1,10 +1,10 @@
 import { chromium } from "@playwright/test";
-import { encode } from "next-auth/jwt";
 import { clickIfVisible, codedError } from "./meeting-bot-teams.mjs";
 
 export function createMeetingRecorderRuntime({
   baseUrl,
-  sttAuthSecret,
+  runnerToken,
+  runnerId,
   teamsDisplayName,
   browserChannel,
   browserExecutable,
@@ -18,25 +18,24 @@ export function createMeetingRecorderRuntime({
   const isInsecureLocalBaseUrl = baseUrl.startsWith("http://");
 
   async function authenticate(context, session) {
-    const now = Math.floor(Date.now() / 1000);
-    const email = process.env.MEETING_BOT_STT_EMAIL?.trim() || session.ownerEmail;
-    const token = await encode({
-      token: {
-        sub: `meeting-bot:${email}`,
-        email,
-        name: teamsDisplayName,
-        userId: `meeting-bot:${email}`,
-        displayName: teamsDisplayName,
-        isDevSession: true,
-        iat: now,
-        exp: now + 12 * 60 * 60,
+    const response = await fetch(`${baseUrl}/api/meeting/bot-sessions/stt-token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-meeting-bot-token": runnerToken,
+        "x-meeting-bot-runner-id": runnerId,
       },
-      secret: sttAuthSecret,
+      body: JSON.stringify({ sessionId: session.id }),
+      signal: AbortSignal.timeout(30_000),
     });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || typeof data.token !== "string" || typeof data.cookieName !== "string") {
+      throw new Error(data.error || `Failed to issue recorder session token (${response.status}).`);
+    }
     const secure = baseUrl.startsWith("https://");
     await context.addCookies([{
-      name: secure ? "__Secure-next-auth.session-token" : "next-auth.session-token",
-      value: token,
+      name: data.cookieName,
+      value: data.token,
       url: baseUrl,
       secure,
       httpOnly: true,
