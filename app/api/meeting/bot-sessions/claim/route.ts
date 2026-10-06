@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeMeetingBotSession } from "@/lib/meeting/bot/serialize";
 import type { MeetingBotStatus } from "@/lib/meeting/bot/types";
 import { isBotRunnerRequest, runnerId } from "../_auth";
+import { CAPTURE_INTERRUPTED_PREFIX } from "@/lib/meeting/audio/finalizeRetry";
 
 export const runtime = "nodejs";
 
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
           if (session.meetingId) {
             await tx.meeting.updateMany({
               where: { id: session.meetingId, status: "UPLOADING" },
-              data: { status: "FAILED", failureReason: "The meeting bot stopped reporting while recording." },
+              data: { status: "FAILED", failureReason: `${CAPTURE_INTERRUPTED_PREFIX}The meeting bot stopped reporting while recording.` },
             });
           }
 
@@ -143,10 +144,26 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  await prisma.meetingBotSession.updateMany({
+  const staleStoppingSessions = await prisma.meetingBotSession.findMany({
     where: { status: "STOP_REQUESTED", lastHeartbeatAt: { not: null, lt: staleBefore } },
-    data: { status: "FAILED", runnerId: null, endedAt: now, errorMessage: "The runner stopped before finalizing the recording." },
+    select: { id: true, meetingId: true },
   });
+  if (staleStoppingSessions.length > 0) {
+    await prisma.$transaction(async (tx) => {
+      for (const session of staleStoppingSessions) {
+        const failed = await tx.meetingBotSession.updateMany({
+          where: { id: session.id, status: "STOP_REQUESTED", lastHeartbeatAt: { not: null, lt: staleBefore } },
+          data: { status: "FAILED", runnerId: null, endedAt: now, errorMessage: "The runner stopped before finalizing the recording." },
+        });
+        if (failed.count === 1 && session.meetingId) {
+          await tx.meeting.updateMany({
+            where: { id: session.meetingId, status: "UPLOADING" },
+            data: { status: "FAILED", failureReason: `${CAPTURE_INTERRUPTED_PREFIX}The runner stopped before finalizing the recording.` },
+          });
+        }
+      }
+    });
+  }
 
   await recoverStaleProcessingMeetings(now);
 
