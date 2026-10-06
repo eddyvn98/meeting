@@ -378,6 +378,9 @@ model MeetingNotification {
   anchorId       String?
   commentId      String?
   actorEmail     String?
+  /// Optional logical idempotency key. LIVE_ROOM uses one key per meeting +
+  /// recipient so concurrent bot heartbeats cannot create duplicate bells.
+  dedupeKey      String?   @unique
   read           Boolean   @default(false)
   createdAt      DateTime  @default(now())
   emailedAt      DateTime?
