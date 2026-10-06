@@ -8,6 +8,7 @@ import { maybePruneTerminalBotSessions } from "@/lib/meeting/bot/pruneBotSession
 import { parseSpeakerObservations, sanitizeParticipantNames } from "@/lib/meeting/bot/rosterMapping";
 import { sanitizeMeetingAttendeeEmails } from "@/lib/meeting/bot/attendeeEmails";
 import type { Prisma } from "@prisma/client";
+import { notifyLiveRoomStarted } from "@/lib/meeting/notify";
 
 export const runtime = "nodejs";
 
@@ -137,6 +138,12 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
       `[meeting-bot][identity] session=${session.id} source=server code=ATTENDEE_EMAILS_PERSISTED ` +
       `added=${updated.attendeeEmails.length - previousAttendeeCount} totalEmails=${updated.attendeeEmails.length}`,
     );
+  }
+  if (status === "CAPTURING" && meetingId) {
+    const meeting = await prisma.meeting.findUnique({ where: { id: meetingId } });
+    if (meeting) {
+      await notifyLiveRoomStarted(meeting, updated.attendeeEmails);
+    }
   }
   if (["ENDED", "FAILED"].includes(status)) {
     maybePruneTerminalBotSessions(updated.ownerEmail);
