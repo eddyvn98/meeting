@@ -35,6 +35,7 @@ function sleep(ms) {
 }
 const ROSTER_PERSIST_MS = 30_000;
 const IDENTITY_PROBE_MS = 60_000;
+const IDENTITY_RETRY_COOLDOWN_MS = 2 * 60_000;
 const MAX_SPEAKER_OBSERVATIONS = 5_000;
 export function createBotSessionRunner(config) {
   let identityStorageState = config.identityStorageState;
@@ -167,6 +168,7 @@ export function createBotSessionRunner(config) {
       let identityWarningIssued = false;
       let identityDirty = false;
       let nextOutlookProbeAt = 0;
+      const participantProbeState = new Map();
 
       const mergeAttendeeEmails = (emails, source = "unknown") => {
         const before = attendeeEmails.size;
@@ -253,10 +255,37 @@ export function createBotSessionRunner(config) {
         if (shouldProbeIdentities) {
           identityProbeAttempts += 1;
 
+          const probeNow = Date.now();
+          const newKeys = new Set(newParticipantNames.map((name) => name.trim().toLocaleLowerCase()));
+          const probeCandidates = roster.participantNames
+            .map((name, index) => {
+              const key = name.trim().toLocaleLowerCase();
+              const state = participantProbeState.get(key) ?? { lastProbedAt: 0, resolved: false };
+              return { name, key, index, ...state };
+            })
+            .filter((item) =>
+              !item.resolved &&
+              (item.lastProbedAt === 0 || probeNow - item.lastProbedAt >= IDENTITY_RETRY_COOLDOWN_MS)
+            )
+            .sort((a, b) => {
+              const aNew = newKeys.has(a.key) ? 0 : 1;
+              const bNew = newKeys.has(b.key) ? 0 : 1;
+              if (aNew !== bNew) return aNew - bNew;
+              if (a.lastProbedAt !== b.lastProbedAt) return a.lastProbedAt - b.lastProbedAt;
+              return a.index - b.index;
+            });
+
           const teamsEmails = await readTeamsParticipantEmails(teamsRuntime.page, {
-            participantNames: roster.participantNames,
+            participantNames: probeCandidates.map((item) => item.name),
             maxProfiles: 6,
             sessionId: session.id,
+            onParticipantProbed(name, { foundEmail }) {
+              const key = name.trim().toLocaleLowerCase();
+              participantProbeState.set(key, {
+                lastProbedAt: Date.now(),
+                resolved: Boolean(foundEmail),
+              });
+            },
           }).catch((error) => {
             logIdentityDiagnostic(session.id, "teams", "PROBE_CALL_FAILED", {
               error: error instanceof Error ? error.message : String(error),
