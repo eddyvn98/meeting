@@ -134,6 +134,30 @@ describe("meeting bot session control", () => {
     ]);
   });
 
+  it("tracks control-plane outage grace independently per session", async () => {
+    let now = 1_000;
+    const api = vi.fn(async (path) => {
+      if (path.includes("session-2")) return { status: "CAPTURING", runnerId: "runner-a" };
+      throw new Error("network down");
+    });
+    const control = createSessionControl({
+      api,
+      emit: vi.fn(),
+      runnerId: "runner-a",
+      controlOutageGraceMs: 5_000,
+      now: () => now,
+    });
+
+    await expect(control.shouldStop("session-1")).resolves.toBe(false);
+    now += 4_000;
+    await expect(control.shouldStop("session-2")).resolves.toBe(false);
+    now += 1_000;
+    await expect(control.shouldStop("session-1")).rejects.toMatchObject({
+      code: "CONTROL_PLANE_UNAVAILABLE",
+    });
+    await expect(control.shouldStop("session-2")).resolves.toBe(false);
+  });
+
   it("fails closed when the control plane stays unreachable past the grace period", async () => {
     let now = 1_000;
     const control = createSessionControl({
