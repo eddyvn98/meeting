@@ -250,10 +250,6 @@ model MeetingBotSession {
   /// These identities grant viewer access to the shared Meeting while keeping
   /// ownerEmail as an administrative role rather than the room's ownership.
   attendeeEmails   String[]        @default([])
-  /// Canonical lower-case emails positively observed in the live Teams roster.
-  /// Only these identities receive implicit shared-room access. Calendar
-  /// invitees remain in attendeeEmails for scheduling/metadata only.
-  presentAttendeeEmails String[]    @default([])
   /// Best-effort active-speaker samples captured from Teams Web, stored as
   /// [{ atMs, names[] }]. Used only to map diarized speaker_N labels to roster
   /// names when confidence is high; never treated as transcript text.
@@ -271,7 +267,6 @@ model MeetingBotSession {
   @@index([ownerEmail, createdAt])
   @@index([status, requestedAt])
   @@index([attendeeEmails(ops: ArrayOps)], type: Gin)
-  @@index([presentAttendeeEmails(ops: ArrayOps)], type: Gin)
   @@unique([source, sourceKey])
   @@map("meeting_bot_sessions")
 }
