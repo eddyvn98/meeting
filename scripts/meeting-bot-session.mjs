@@ -7,6 +7,7 @@ import {
   readOutlookMeetingAttendeeEmails,
   readTeamsParticipantEmails,
 } from "./meeting-bot-participant-identities.mjs";
+import { logIdentityDiagnostic } from "./meeting-bot-identity-diagnostics.mjs";
 import {
   initialAloneState,
   isAloneFromCount,
@@ -111,10 +112,17 @@ export function createBotSessionRunner(config) {
       sink = await createPulseAudioSession(session.id);
       teamsRuntime = await launchTeams(sink.sinkName, storageState);
       if (!await joinTeams(teamsRuntime, session, heartbeat)) return;
-      await clickIfVisible(
+      const peopleOpened = await clickIfVisible(
         teamsRuntime.page,
         [/^People$/i, /^Participants$/i, /Người tham gia/i],
       ).catch(() => false);
+      logIdentityDiagnostic(
+        session.id,
+        "teams",
+        peopleOpened ? "PEOPLE_PANEL_OPENED" : "PEOPLE_PANEL_OPEN_FAILED",
+        { authenticated: teamsRuntime.authenticated },
+        peopleOpened ? "log" : "warn",
+      );
       recorder = await recorderRuntime.launch(session, sink.sourceName);
       await heartbeat.update("CAPTURING", { meetingId: recorder.meetingId });
       const captureStartedAtMs = Date.now();
@@ -124,6 +132,10 @@ export function createBotSessionRunner(config) {
           ? session.attendeeEmails.map((email) => String(email).trim().toLowerCase()).filter(Boolean)
           : [],
       );
+      logIdentityDiagnostic(session.id, "session", "INITIAL_STATE", {
+        authenticated: teamsRuntime.authenticated,
+        existingEmails: attendeeEmails.size,
+      });
       const speakerObservations = [];
       let nextRosterPersistAt = 0;
       let nextIdentityProbeAt = 0;
@@ -131,13 +143,24 @@ export function createBotSessionRunner(config) {
       let identityWarningIssued = false;
       let identityDirty = false;
 
-      const mergeAttendeeEmails = (emails) => {
+      const mergeAttendeeEmails = (emails, source = "unknown") => {
         const before = attendeeEmails.size;
         for (const value of emails || []) {
           const email = typeof value === "string" ? value.trim().toLowerCase() : "";
           if (email) attendeeEmails.add(email);
         }
-        if (attendeeEmails.size > before) identityDirty = true;
+        const added = attendeeEmails.size - before;
+        if (added > 0) {
+          identityDirty = true;
+          logIdentityDiagnostic(session.id, source, "EMAILS_MERGED", {
+            added,
+            totalEmails: attendeeEmails.size,
+          });
+        } else {
+          logIdentityDiagnostic(session.id, source, "NO_NEW_EMAILS", {
+            totalEmails: attendeeEmails.size,
+          });
+        }
       };
 
       // Authenticated mode can reuse the same Microsoft browser session in a
@@ -145,8 +168,12 @@ export function createBotSessionRunner(config) {
       // fallback: recording/STT must never depend on Outlook UI stability.
       if (teamsRuntime.authenticated) {
         void readOutlookMeetingAttendeeEmails(teamsRuntime.context, session)
-          .then(mergeAttendeeEmails)
-          .catch(() => undefined);
+          .then((emails) => mergeAttendeeEmails(emails, "outlook"))
+          .catch((error) => {
+            logIdentityDiagnostic(session.id, "outlook", "ASYNC_FALLBACK_FAILED", {
+              error: error instanceof Error ? error.message : String(error),
+            }, "warn");
+          });
       }
 
       const sampleRoster = async ({ probeIdentities = false } = {}) => {
@@ -162,8 +189,14 @@ export function createBotSessionRunner(config) {
           const emails = await readTeamsParticipantEmails(teamsRuntime.page, {
             participantNames: roster.participantNames,
             maxProfiles: 6,
-          }).catch(() => []);
-          mergeAttendeeEmails(emails);
+            sessionId: session.id,
+          }).catch((error) => {
+            logIdentityDiagnostic(session.id, "teams", "PROBE_CALL_FAILED", {
+              error: error instanceof Error ? error.message : String(error),
+            }, "warn");
+            return [];
+          });
+          mergeAttendeeEmails(emails, "teams");
           if (
             teamsRuntime.authenticated &&
             attendeeEmails.size === 0 &&
@@ -171,9 +204,17 @@ export function createBotSessionRunner(config) {
             !identityWarningIssued
           ) {
             identityWarningIssued = true;
-            console.warn(
-              `[meeting-bot] session ${session.id}: participant email extraction is degraded; ` +
-              "recording/STT continues, but automatic shared-room access may be incomplete.",
+            logIdentityDiagnostic(
+              session.id,
+              "session",
+              "IDENTITY_DEGRADED",
+              {
+                attempts: identityProbeAttempts,
+                participants: roster.participantNames.length,
+                totalEmails: attendeeEmails.size,
+                note: "recording/STT continues; automatic shared-room access may be incomplete",
+              },
+              "warn",
             );
           }
         }
@@ -322,17 +363,33 @@ export function createBotSessionRunner(config) {
           break;
         }
         const persistRoster = nowMs >= nextRosterPersistAt || identityDirty;
+        const persistingIdentityChange = identityDirty;
+        if (persistingIdentityChange) {
+          logIdentityDiagnostic(session.id, "session", "PERSIST_REQUESTED", {
+            totalEmails: attendeeEmails.size,
+          });
+        }
         await heartbeat.update("CAPTURING", {
           meetingId: recorder.meetingId,
           ...(persistRoster ? rosterPayload() : {}),
         });
         if (persistRoster) {
           nextRosterPersistAt = nowMs + ROSTER_PERSIST_MS;
+          if (persistingIdentityChange) {
+            logIdentityDiagnostic(session.id, "session", "PERSIST_CONFIRMED", {
+              totalEmails: attendeeEmails.size,
+            });
+          }
           identityDirty = false;
         }
         await sleep(pollMs);
       }
       const recordedMs = Date.now() - captureStartedAtMs;
+      logIdentityDiagnostic(session.id, "session", "FINAL_STATE", {
+        participants: rosterNames.size,
+        attendeeEmails: attendeeEmails.size,
+        probes: identityProbeAttempts,
+      });
       await heartbeat.update("STOP_REQUESTED", {
         meetingId: recorder.meetingId,
         ...rosterPayload(),
