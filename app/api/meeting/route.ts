@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { resolveMeetingCallerEmail } from "./_auth";
+import { resolveMeetingCaller, resolveMeetingCallerEmail } from "./_auth";
 import { serializeMeeting } from "@/lib/meeting/serialize";
 import type { CreateMeetingInput, MeetingStatus } from "@/lib/meeting/types";
 import { maybeRunScheduledCleanup } from "@/lib/meeting/audio/cleanupMeetingAudio";
@@ -132,8 +132,9 @@ export async function GET(req: NextRequest) {
  *  separate build step) writes to before it starts pushing audio chunks;
  *  it does not itself accept audio bytes or trigger STT. */
 export async function POST(req: NextRequest) {
-  const email = await resolveMeetingCallerEmail(req);
-  if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const caller = await resolveMeetingCaller(req);
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const email = caller.email;
 
   let body: Partial<CreateMeetingInput>;
   try {
@@ -159,18 +160,42 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const meeting = await prisma.meeting.create({
-    data: {
-      ownerEmail: email,
-      title: body.title.trim(),
-      status: body.status ?? "UPLOADING",
-      audioUrl: asOptionalString(body.audioUrl),
-      durationSec: asOptionalInt(body.durationSec),
-      fileSizeBytes: asOptionalInt(body.fileSizeBytes),
-      mimeType: asOptionalString(body.mimeType),
-      sttLanguage: typeof body.sttLanguage === "string" && isValidSttLang(body.sttLanguage) ? body.sttLanguage : DEFAULT_STT_LANG,
-    },
-  });
+  const createData = {
+    ownerEmail: email,
+    title: body.title.trim(),
+    status: body.status ?? "UPLOADING",
+    audioUrl: asOptionalString(body.audioUrl),
+    durationSec: asOptionalInt(body.durationSec),
+    fileSizeBytes: asOptionalInt(body.fileSizeBytes),
+    mimeType: asOptionalString(body.mimeType),
+    sttLanguage: typeof body.sttLanguage === "string" && isValidSttLang(body.sttLanguage) ? body.sttLanguage : DEFAULT_STT_LANG,
+  };
+
+  const meeting = caller.meetingBotSessionId
+    ? await prisma.$transaction(async (tx) => {
+        const created = await tx.meeting.create({ data: createData });
+        const bound = await tx.meetingBotSession.updateMany({
+          where: {
+            id: caller.meetingBotSessionId,
+            meetingId: null,
+            ownerEmail: email,
+            status: { in: ["CLAIMED", "JOINING", "LOBBY", "JOINED", "CAPTURING", "STOP_REQUESTED"] },
+          },
+          data: { meetingId: created.id, lastHeartbeatAt: new Date() },
+        });
+        if (bound.count !== 1) {
+          throw new Error("BOT_RECORDER_SESSION_BIND_FAILED");
+        }
+        return created;
+      }).catch((error) => {
+        if (error instanceof Error && error.message === "BOT_RECORDER_SESSION_BIND_FAILED") return null;
+        throw error;
+      })
+    : await prisma.meeting.create({ data: createData });
+
+  if (!meeting) {
+    return NextResponse.json({ error: "Bot recorder session is unavailable" }, { status: 409 });
+  }
   return NextResponse.json(serializeMeeting(meeting), { status: 201 });
 }
 
