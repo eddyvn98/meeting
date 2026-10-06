@@ -75,3 +75,7 @@ All authorized viewers receive the same persisted transcript segments. Translati
 Automatic attendee membership currently requires a calendar-backed bot session whose Graph event exposes attendee email addresses. A manually pasted Teams URL has no reliable attendee email identity source, so it cannot safely grant automatic room access merely from Teams Web display names.
 
 Do not replace this rule with broad company-wide live-meeting visibility and do not infer authorization from participant display names.
+
+### Recovery boundary
+
+The normal calendar occurrence path resolves to one shared Meeting. The existing runner continuation mechanism can still create a second recovery recording if the recorder process dies after capture has already started. Attendee identities are preserved onto that continuation so access is not lost, but consolidating recovery fragments back into one physical Meeting record is a separate reliability task. Do not confuse this edge case with the shared-room authorization model.
