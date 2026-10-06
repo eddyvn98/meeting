@@ -126,6 +126,7 @@ export function createBotSessionRunner(config) {
     reconnectTimeoutMs,
     rejoinWindowMs,
     rejoinAttemptMs,
+    teamsDisplayName,
   });
   async function requestContinuation(session) {
     return api(`/api/meeting/bot-sessions/${encodeURIComponent(session.id)}/continue`, {
