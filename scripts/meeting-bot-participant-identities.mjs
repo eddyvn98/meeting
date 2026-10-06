@@ -66,6 +66,7 @@ export async function readTeamsParticipantEmails(page, {
   participantNames = [],
   maxProfiles = 6,
   sessionId = "unknown",
+  onParticipantProbed,
 } = {}) {
   if (!page || page.isClosed()) {
     logIdentityDiagnostic(sessionId, "teams", "PAGE_CLOSED", {}, "warn");
@@ -127,6 +128,7 @@ export async function readTeamsParticipantEmails(page, {
         return false;
       });
     if (!clicked) {
+      onParticipantProbed?.(name, { foundEmail: false });
       await captureIdentityScreenshot(page, sessionId, "teams-profile-open-failed");
       continue;
     }
@@ -147,12 +149,14 @@ export async function readTeamsParticipantEmails(page, {
 
     await page.keyboard.press("Escape").catch(() => undefined);
     if (emails.size === before) {
+      onParticipantProbed?.(name, { foundEmail: false });
       logIdentityDiagnostic(sessionId, "teams", "PROFILE_CARD_NO_EMAIL", {
         participant: name,
         cards: cardCount,
       }, "warn");
       continue;
     }
+    onParticipantProbed?.(name, { foundEmail: true });
     logIdentityDiagnostic(sessionId, "teams", "PROFILE_EMAIL_FOUND", {
       participant: name,
       newEmails: emails.size - before,
