@@ -186,7 +186,15 @@ export function useMeetingRecorderControls(context: MeetingRecorderControlsConte
       const controller = chunkControllerRef.current;
       const finalChunk = await controller?.stop();
       chunkControllerRef.current = null;
-      const fullRecording = await fullRecorderRef.current?.stop().catch(() => null);
+      const skipFullAudio =
+        typeof window !== "undefined" &&
+        (window as typeof window & { __meetingBotSkipFullAudio?: boolean }).__meetingBotSkipFullAudio === true;
+      let fullRecording: Blob | null = null;
+      if (skipFullAudio) {
+        fullRecorderRef.current?.discard();
+      } else {
+        fullRecording = await fullRecorderRef.current?.stop().catch(() => null) ?? null;
+      }
       fullRecorderRef.current = null;
       if (pausedAtRef.current !== null) {
         pausedDurationMsRef.current += Math.max(0, Date.now() - pausedAtRef.current);
