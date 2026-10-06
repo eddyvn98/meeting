@@ -127,6 +127,8 @@ export function createBotSessionRunner(config) {
       const speakerObservations = [];
       let nextRosterPersistAt = 0;
       let nextIdentityProbeAt = 0;
+      let identityProbeAttempts = 0;
+      let identityWarningIssued = false;
 
       const mergeAttendeeEmails = (emails) => {
         for (const value of emails || []) {
@@ -153,11 +155,24 @@ export function createBotSessionRunner(config) {
           if (key && !rosterNames.has(key)) rosterNames.set(key, name.trim());
         }
         if (probeIdentities && roster.participantNames.length > 0) {
+          identityProbeAttempts += 1;
           const emails = await readTeamsParticipantEmails(teamsRuntime.page, {
             participantNames: roster.participantNames,
             maxProfiles: 6,
           }).catch(() => []);
           mergeAttendeeEmails(emails);
+          if (
+            teamsRuntime.authenticated &&
+            attendeeEmails.size === 0 &&
+            identityProbeAttempts >= 3 &&
+            !identityWarningIssued
+          ) {
+            identityWarningIssued = true;
+            console.warn(
+              `[meeting-bot] session ${session.id}: participant email extraction is degraded; ` +
+              "recording/STT continues, but automatic shared-room access may be incomplete.",
+            );
+          }
         }
         if (roster.activeSpeakerNames.length > 0) {
           speakerObservations.push({
