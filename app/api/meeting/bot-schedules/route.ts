@@ -72,29 +72,44 @@ export async function POST(req: NextRequest) {
     ? nextMeetingScheduleAtOrAfter(startAt, repeat, new Date(now.getTime() - 60_000), timezoneOffsetMin)
     : null;
 
-  const existing = await prisma.meetingBotSchedule.findFirst({
-    where: {
-      ownerEmail: email,
+  const result = await prisma.$transaction(async (tx) => {
+    const lockKey = [
+      "meeting-bot-schedule",
+      email,
       meetingUrl,
-      startAt,
+      startAt.toISOString(),
       repeat,
-      enabled: true,
-    },
-  });
-  if (existing) return NextResponse.json(serializeMeetingBotSchedule(existing));
+    ].join(":");
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
 
-  const schedule = await prisma.meetingBotSchedule.create({
-    data: {
-      ownerEmail: email,
-      meetingUrl,
-      title: cleanMeetingTitle(body.title),
-      startAt,
-      timezoneOffsetMin,
-      nextRunAt,
-      repeat,
-      enabled: enabled && nextRunAt !== null,
-    },
+    const existing = await tx.meetingBotSchedule.findFirst({
+      where: {
+        ownerEmail: email,
+        meetingUrl,
+        startAt,
+        repeat,
+        enabled: true,
+      },
+    });
+    if (existing) return { schedule: existing, created: false };
+
+    const schedule = await tx.meetingBotSchedule.create({
+      data: {
+        ownerEmail: email,
+        meetingUrl,
+        title: cleanMeetingTitle(body.title),
+        startAt,
+        timezoneOffsetMin,
+        nextRunAt,
+        repeat,
+        enabled: enabled && nextRunAt !== null,
+      },
+    });
+    return { schedule, created: true };
   });
 
-  return NextResponse.json(serializeMeetingBotSchedule(schedule), { status: 201 });
+  return NextResponse.json(
+    serializeMeetingBotSchedule(result.schedule),
+    { status: result.created ? 201 : 200 },
+  );
 }
