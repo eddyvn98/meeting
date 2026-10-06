@@ -144,6 +144,8 @@ export async function readTeamsParticipantEmails(page, {
     for (let index = 0; index < cardCount; index += 1) {
       const card = cards.nth(index);
       if (!await card.isVisible().catch(() => false)) continue;
+      const cardText = await card.innerText().catch(() => "");
+      if (!cardText.toLocaleLowerCase().includes(name.toLocaleLowerCase())) continue;
       mergeEmails(emails, await emailsFromLocator(card));
     }
 
