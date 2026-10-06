@@ -563,7 +563,9 @@ export function createBotSessionRunner(config) {
       teamsRuntime = null;
       await recorderRuntime.finish(
         recorder,
-        shutdownRequested ? { timeoutMs: shutdownFinalizeTimeoutMs } : undefined,
+        shutdownRequested
+          ? { timeoutMs: shutdownFinalizeTimeoutMs, skipFullAudio: true }
+          : undefined,
       );
       if (shutdownRequested) {
         await heartbeat.update("ENDED", {
@@ -610,7 +612,10 @@ export function createBotSessionRunner(config) {
       if (code === "CONTROL_PLANE_UNAVAILABLE" && recorder && recorderRuntime.isAlive(recorder)) {
         await closeTeams(teamsRuntime).catch(() => undefined);
         teamsRuntime = null;
-        await recorderRuntime.finish(recorder, { timeoutMs: controlOutageFinalizeTimeoutMs }).catch((finalizeError) => {
+        await recorderRuntime.finish(recorder, {
+          timeoutMs: controlOutageFinalizeTimeoutMs,
+          skipFullAudio: true,
+        }).catch((finalizeError) => {
           console.error(
             `[meeting-bot] session ${session.id} could not finalize during control-plane outage:`,
             finalizeError instanceof Error ? finalizeError.message : finalizeError,
