@@ -108,7 +108,7 @@ export function createBotSessionRunner(config) {
     const joined = await waitForTeamsJoin(runtime.page, {
       sessionId: session.id,
       updateStatus: heartbeat.update,
-      shouldStop: control.shouldStop,
+      shouldStop: async (sessionId) => shouldShutdown() || await control.shouldStop(sessionId),
       timeoutMs,
     });
     if (joined) {
