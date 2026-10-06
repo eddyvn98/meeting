@@ -79,8 +79,7 @@ export async function POST(req: NextRequest) {
             lte: new Date(occurrence.getTime() + 10 * 60_000),
           },
         },
-        orderBy: { requestedAt: "asc" },
-        take: 100,
+        orderBy: { requestedAt: "asc" }
       });
       const conflict = conflictCandidates.find(
         (session) => teamsMeetingIdentity(session.meetingUrl) === teamsMeetingIdentity(schedule.meetingUrl),
@@ -98,8 +97,7 @@ export async function POST(req: NextRequest) {
               sourceKey: { startsWith: `${schedule.id}:` },
             },
           },
-          orderBy: { requestedAt: "desc" },
-          take: 50,
+          orderBy: { requestedAt: "desc" }
         });
         continuationConflict = continuations.find((session) =>
           teamsMeetingIdentity(session.meetingUrl) === teamsMeetingIdentity(schedule.meetingUrl) &&
