@@ -103,11 +103,20 @@ export async function POST(req: NextRequest) {
           data: { status: "FAILED", runnerId: null, endedAt: now, errorMessage: "The runner heartbeat expired during capture." },
         });
         if (failed.count === 1) {
+          let needsContinuation = true;
           if (session.meetingId) {
-            await tx.meeting.updateMany({
-              where: { id: session.meetingId, status: "UPLOADING" },
-              data: { status: "FAILED", failureReason: `${CAPTURE_INTERRUPTED_PREFIX}The meeting bot stopped reporting while recording.` },
+            const linkedMeeting = await tx.meeting.findUnique({
+              where: { id: session.meetingId },
+              select: { status: true },
             });
+            if (linkedMeeting?.status === "PROCESSING" || linkedMeeting?.status === "READY") {
+              needsContinuation = false;
+            } else {
+              await tx.meeting.updateMany({
+                where: { id: session.meetingId, status: "UPLOADING" },
+                data: { status: "FAILED", failureReason: `${CAPTURE_INTERRUPTED_PREFIX}The meeting bot stopped reporting while recording.` },
+              });
+            }
           }
 
           const maxContinuationsRaw = Number(process.env.MEETING_BOT_MAX_CONTINUATIONS);
@@ -116,7 +125,7 @@ export async function POST(req: NextRequest) {
               ? maxContinuationsRaw
               : DEFAULT_MAX_CONTINUATIONS;
           const depth = (session.sourceKey?.match(/:continuation:/g) ?? []).length;
-          if (depth < maxContinuations) {
+          if (needsContinuation && depth < maxContinuations) {
             const baseKey = session.sourceKey ?? session.id;
             const continuationKey = `${baseKey}:continuation:${session.id}`;
             await tx.meetingBotSession.upsert({
