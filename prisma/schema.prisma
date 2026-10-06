@@ -108,6 +108,14 @@ model Meeting {
   /// instead of a dead-end. transcript/route.ts clears this back to false
   /// once a real transcript is saved (retry or otherwise).
   isMockResult   Boolean       @default(false)
+  /// Durable background speaker-enrichment state. Text can be READY while
+  /// diarization is still pending/retrying independently.
+  diarizationStatus String      @default("NOT_STARTED")
+  diarizationError  String?     @db.Text
+  /// Durable Overview/insight generation state so a server restart after STT
+  /// does not leave a transcript permanently without enrichment.
+  enrichmentStatus  String      @default("NOT_STARTED")
+  enrichmentError   String?     @db.Text
   /// Set once "Create mindmap" (MeetingResultHeader.tsx) succeeds — the
   /// WorkspaceBoard.id it built, so the button can turn into "View mindmap"
   /// and link straight back to it instead of only working for the one
@@ -378,6 +386,9 @@ model MeetingNotification {
   anchorId       String?
   commentId      String?
   actorEmail     String?
+  /// Optional logical idempotency key. LIVE_ROOM uses one key per meeting +
+  /// recipient so concurrent bot heartbeats cannot create duplicate bells.
+  dedupeKey      String?   @unique
   read           Boolean   @default(false)
   createdAt      DateTime  @default(now())
   emailedAt      DateTime?

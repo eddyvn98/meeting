@@ -29,6 +29,7 @@ export const UNKNOWN_SPEAKER_NAME = "Unknown";
 export type MeetingStatus = "UPLOADING" | "PROCESSING" | "READY" | "FAILED";
 export type AudioChunkStatus = "PENDING" | "UPLOADED" | "FAILED";
 export type ActionItemStatus = "OPEN" | "IN_PROGRESS" | "DONE";
+export type MeetingPostprocessStatus = "NOT_STARTED" | "PENDING" | "RUNNING" | "DONE" | "FAILED";
 
 /** Row shape used by both the list (GET /api/meeting) and as the base of
  *  MeetingDetail (GET /api/meeting/[meetingId]) — the list never nests
@@ -53,6 +54,12 @@ export interface Meeting {
    *  instead of presenting it as a finished transcript (see
    *  POST /api/meeting/[meetingId]/reprocess). */
   isMockResult: boolean;
+  /** Durable speaker-enrichment state; READY text may exist while this runs. */
+  diarizationStatus: MeetingPostprocessStatus;
+  diarizationError: string | null;
+  /** Durable AI Overview/insight generation state. */
+  enrichmentStatus: MeetingPostprocessStatus;
+  enrichmentError: string | null;
   /** Set once "Create mindmap" has succeeded at least once — the
    *  WorkspaceBoard.id to link back to, so the header can show "View
    *  mindmap" instead of creating a new board on every click. */

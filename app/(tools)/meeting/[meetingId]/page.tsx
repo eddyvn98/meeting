@@ -14,6 +14,7 @@ import { MeetingDetailSkeleton } from "./components/MeetingDetailSkeleton";
 import { MeetingMockResultBanner } from "./components/MeetingMockResultBanner";
 import { MeetingAudioExpiryBanner } from "./components/MeetingAudioExpiryBanner";
 import { MeetingAudioOnlyBanner } from "./components/MeetingAudioOnlyBanner";
+import { MeetingPostprocessRecovery } from "./components/MeetingPostprocessRecovery";
 import { isAudioOnlyResult } from "@/lib/meeting/audio/audioOnly";
 import { computeAudioExpiry } from "@/lib/meeting/audioRetention";
 import { useAudioRetentionDays } from "@/lib/meeting/useAudioRetentionDays";
@@ -157,13 +158,21 @@ export default function MeetingResultPage() {
 			fetch(`/api/meeting/${meetingId}`, { cache: "no-store" })
 				.then((res) => (res.ok ? (res.json() as Promise<MeetingDetail>) : null))
 				.then((data) => {
-					if (cancelled || !data?.summary) return;
+					if (cancelled || !data) return;
+					const postprocessChanged =
+						data.enrichmentStatus !== detail.enrichmentStatus ||
+						data.diarizationStatus !== detail.diarizationStatus ||
+						data.enrichmentError !== detail.enrichmentError ||
+						data.diarizationError !== detail.diarizationError;
+					if (!data.summary && !postprocessChanged) return;
 					meetingDetailCache.set(meetingId, data);
 					setDetail(data);
-					// Same reasoning as the initial fetch above — this poll is
-					// exactly what catches an auto-title landing while you're
-					// already sitting on the page.
-					emitMeetingRenamed(meetingId, data.title);
+					if (data.summary) {
+						// Same reasoning as the initial fetch above — this poll
+						// catches an auto-title landing while you're already on
+						// the page.
+						emitMeetingRenamed(meetingId, data.title);
+					}
 				})
 				.catch(() => undefined);
 		}, 4000);
@@ -259,6 +268,14 @@ export default function MeetingResultPage() {
 							</div>
 						)}
 						<MeetingAudioPlayer audioUrl={detail.audioUrl} meetingTitle={detail.title} audioExpiry={audioExpiry} />
+						<MeetingPostprocessRecovery
+							detail={detail}
+							onRefresh={(next) => {
+								meetingDetailCache.set(meetingId, next);
+								setDetail(next);
+								emitMeetingRenamed(meetingId, next.title);
+							}}
+						/>
 						{detail.isMockResult && <MeetingMockResultBanner meetingId={meetingId} />}
 						<MeetingAudioExpiryBanner meeting={detail} />
 						<div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">

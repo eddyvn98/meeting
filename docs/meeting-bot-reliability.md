@@ -201,3 +201,22 @@ The following cannot be proven by unit/type/build CI and must be exercised on th
 - Teams profile email extraction is scoped to a profile card matching the participant that was clicked.
 - Recorder JWT lifetime follows the configured maximum meeting duration plus finalize grace, with a bounded maximum lifetime.
 - Saved Teams auth state is required to use owner-only permissions. Optional identity screenshots use owner-only permissions and retention cleanup.
+
+
+## V10 follow-up hardening
+
+Static review after the V9 reliability work added these additional invariants:
+
+- Raw-chunk cleanup filters directory entry names before joining paths, so Windows separators can never cause the continuous `full.*` recording to be pruned.
+- Chunked server diarization/transcription uses a run id plus explicit chunk index/count. Process-local accumulator loss fails closed with a retryable 409; the browser restarts the whole run instead of accepting partial whole-meeting speaker state.
+- Internal schedule dispatch, edit and delete share one per-schedule PostgreSQL advisory lock, preventing a concurrent dispatcher from resurrecting an occurrence after a user changes or deletes the schedule.
+- Speaker diarization and AI Overview enrichment have durable `PENDING/RUNNING/DONE/FAILED` state independent of the Meeting's READY transcript. The result screen exposes retry controls without rerunning STT.
+- LIVE_ROOM bell/email creation uses a database-unique logical dedupe key, so concurrent identity/heartbeat updates cannot create duplicate notifications.
+
+Additional staging checks:
+
+27. Restart the Meeting web process between two server diarization chunks. The request must restart from chunk 0 or fail retryably; it must never return a partial result as complete.
+28. Disable/reschedule/delete an internal bot schedule at the same moment the dispatcher polls it; no superseded occurrence may be created after the user action succeeds.
+29. Close the recorder/result browser immediately after the transcript becomes READY but before speaker detection completes; reopening the meeting must expose speaker-only recovery.
+30. Restart the web process while Overview generation is in flight; the transcript must stay usable and Overview must be independently retryable.
+31. On Windows, finalize a multi-chunk meeting that also has `full.*`; both `merged.m4a` and the continuous recording must remain after raw-chunk pruning.

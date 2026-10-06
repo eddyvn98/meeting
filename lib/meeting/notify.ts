@@ -9,6 +9,7 @@
 import type { Meeting } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { emailConfig, sendNotificationEmail } from "./notifyEmail";
+import { liveRoomNotificationDedupeKey } from "./notificationDedupe";
 
 export type MeetingNotificationType = "COMMENT" | "REPLY" | "SHARE_INVITE" | "LIVE_ROOM";
 
@@ -22,19 +23,38 @@ function appBaseUrl(): string {
   return (process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "");
 }
 
-async function deliver(meeting: Meeting, recipients: { email: string; type: MeetingNotificationType; body: string }[], extra: { anchorId?: string; commentId?: string; actorEmail: string; linkSuffix?: string }) {
+async function deliver(
+  meeting: Meeting,
+  recipients: { email: string; type: MeetingNotificationType; body: string; dedupeKey?: string }[],
+  extra: { anchorId?: string; commentId?: string; actorEmail: string; linkSuffix?: string },
+) {
   if (recipients.length === 0) return;
   const created = await Promise.all(
-    recipients.map((r) =>
-      prisma.meetingNotification.create({
-        data: { recipientEmail: r.email, meetingId: meeting.id, type: r.type, body: r.body, anchorId: extra.anchorId ?? null, commentId: extra.commentId ?? null, actorEmail: extra.actorEmail },
-      }),
-    ),
+    recipients.map(async (r) => {
+      try {
+        return await prisma.meetingNotification.create({
+          data: {
+            recipientEmail: r.email,
+            meetingId: meeting.id,
+            type: r.type,
+            body: r.body,
+            anchorId: extra.anchorId ?? null,
+            commentId: extra.commentId ?? null,
+            actorEmail: extra.actorEmail,
+            dedupeKey: r.dedupeKey ?? null,
+          },
+        });
+      } catch (error) {
+        if (r.dedupeKey && (error as { code?: string })?.code === "P2002") return null;
+        throw error;
+      }
+    }),
   );
   if (!emailConfig()) return;
 
   const link = `${appBaseUrl()}/meeting/${meeting.id}${extra.linkSuffix ?? (extra.anchorId ? "/minutes" : "")}`;
   for (const row of created) {
+    if (!row) continue;
     const recent = await prisma.meetingNotification.findFirst({
       where: { recipientEmail: row.recipientEmail, meetingId: meeting.id, emailedAt: { gt: new Date(Date.now() - EMAIL_THROTTLE_MS) } },
       select: { id: true },
@@ -95,23 +115,12 @@ export async function notifyLiveRoomStarted(
     );
     if (recipientSet.size === 0) return;
 
-    const recipients = [...recipientSet];
-    const existing = await prisma.meetingNotification.findMany({
-      where: {
-        meetingId: meeting.id,
-        type: "LIVE_ROOM",
-        recipientEmail: { in: recipients },
-      },
-      select: { recipientEmail: true },
-    });
-    const alreadyNotified = new Set(existing.map((row) => lower(row.recipientEmail)));
-    const pending = recipients
-      .filter((email) => !alreadyNotified.has(email))
-      .map((email) => ({
-        email,
-        type: "LIVE_ROOM" as const,
-        body: `Live STT is ready for "${meeting.title}". Open the shared room to follow the transcript in real time.`,
-      }));
+    const pending = [...recipientSet].map((email) => ({
+      email,
+      type: "LIVE_ROOM" as const,
+      body: `Live STT is ready for "${meeting.title}". Open the shared room to follow the transcript in real time.`,
+      dedupeKey: liveRoomNotificationDedupeKey(meeting.id, email),
+    }));
 
     await deliver(meeting, pending, {
       actorEmail,

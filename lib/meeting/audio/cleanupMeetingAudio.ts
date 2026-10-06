@@ -17,7 +17,7 @@
  */
 
 import { mkdir, readdir, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { prisma } from "@/lib/prisma";
 import { isRetryableFinalizeFailure } from "./finalizeRetry";
 import { MEETING_AUDIO_ROOT, meetingAudioDir, mergedAudioPath } from "./paths";
@@ -29,20 +29,24 @@ import { MEETING_AUDIO_ROOT, meetingAudioDir, mergedAudioPath } from "./paths";
  *  deleting it is opt-in via MEETING_AUDIO_RETENTION_DAYS. */
 export const RETENTION_DAYS = Math.max(0, Number(process.env.MEETING_AUDIO_RETENTION_DAYS) || 0);
 
-/** Deletes every file in a meeting's audio directory except merged.m4a.
- *  Best-effort — logs and swallows errors so a prune failure never blocks
- *  the finalize response that triggered it. */
+export function shouldPruneMeetingAudioEntry(name: string, keepName = "merged.m4a"): boolean {
+  return name !== keepName && !name.startsWith("full.");
+}
+
+/** Deletes every file in a meeting's audio directory except merged.m4a and
+ *  the continuous full.<ext> recording. Filtering happens on the directory
+ *  entry name before path joining, so it behaves identically on POSIX and
+ *  Windows path separators. Best-effort — logs and swallows errors so a
+ *  prune failure never blocks the finalize response that triggered it. */
 export async function pruneRawChunksAfterMerge(meetingId: string): Promise<void> {
   const dir = meetingAudioDir(meetingId);
-  const keep = mergedAudioPath(meetingId);
+  const keepName = basename(mergedAudioPath(meetingId));
   try {
     const entries = await readdir(dir);
     await Promise.all(
       entries
-        .map((name) => join(dir, name))
-        // The merged file and the continuous recording are what is kept.
-        .filter((path) => path !== keep && !path.split("/").pop()?.startsWith("full."))
-        .map((path) => rm(path, { force: true })),
+        .filter((name) => shouldPruneMeetingAudioEntry(name, keepName))
+        .map((name) => rm(join(dir, name), { force: true })),
     );
   } catch (err) {
     console.warn("[meeting] pruneRawChunksAfterMerge failed:", err instanceof Error ? err.message : String(err));

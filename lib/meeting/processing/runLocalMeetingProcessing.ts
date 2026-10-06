@@ -221,6 +221,18 @@ async function processInBrowser(
   }
 }
 
+async function updateDiarizationStatus(
+  meetingId: string,
+  status: "RUNNING" | "DONE" | "FAILED",
+  error?: string,
+): Promise<void> {
+  await fetch(`/api/meeting/${encodeURIComponent(meetingId)}/postprocess-status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ task: "diarization", status, error }),
+  }).catch(() => undefined);
+}
+
 async function saveTagged(
   meetingId: string,
   sttSegments: STTSegment[],
@@ -280,6 +292,7 @@ async function enrichTranscriptWithDiarization(
   diarize: () => Promise<{ spans: DiarizationSpan[]; centroids: SpeakerCentroid[] }>,
 ): Promise<void> {
   setDiarizationRunStatus("running");
+  await updateDiarizationStatus(meetingId, "RUNNING");
   try {
     const { spans, centroids } = await diarize();
     const speakerIndexes = assignSpeakerIndexes(
@@ -288,10 +301,17 @@ async function enrichTranscriptWithDiarization(
     );
     const tagged: SpeakerTaggedSegment[] = sttSegments.map((s, i) => ({ ...s, speakerIndex: speakerIndexes[i] }));
     const utterances = mergeUtterances(tagged);
-    if (utterances.length > 0) await saveTranscript(meetingId, utterances, centroids, false, true);
+    if (utterances.length === 0) {
+      throw new Error("Speaker enrichment produced no transcript utterances.");
+    }
+    const saved = await saveTranscript(meetingId, utterances, centroids, false, true);
+    if (!saved) throw new Error("The speaker-enriched transcript could not be saved.");
+    await updateDiarizationStatus(meetingId, "DONE");
     setDiarizationRunStatus("done");
   } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    await updateDiarizationStatus(meetingId, "FAILED", reason);
     setDiarizationRunStatus("failed");
-    console.warn("[meeting] Background diarization failed; keeping the initial transcript:", err instanceof Error ? err.message : String(err));
+    console.warn("[meeting] Background diarization failed; keeping the initial transcript:", reason);
   }
 }

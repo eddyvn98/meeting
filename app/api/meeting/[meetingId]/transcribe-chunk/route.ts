@@ -6,30 +6,18 @@ import { ServerDiarizationProviderReal } from "@/lib/meeting/stt/serverDiarizati
 import { clusterEmbeddingSpans, type RawEmbeddingSpan } from "@/lib/meeting/stt/diarization/runDiarizationCore";
 import { loadVoiceProfileSeeds } from "@/lib/meeting/stt/voiceLibrary";
 import { acquireMeetingSttSlot, MeetingSttBusyError } from "@/lib/meeting/stt/serverSttConcurrency";
+import { missingChunkIndexes, parseChunkRunHeaders } from "@/lib/meeting/stt/chunkRunProtocol";
 
 /**
  * POST /api/meeting/[meetingId]/transcribe-chunk
  *
- * Chunked counterpart to transcribe/route.ts for long meetings — see
- * lib/meeting/stt/chunkedServerTranscription.ts's doc comment for why a
- * long recording is sent as several ~15-minute slices instead of one giant
- * request. Each request transcribes ONE slice and extracts (but does not
- * yet cluster) its diarization speaker embeddings, appending both into an
- * in-memory per-meeting accumulator. Only the last chunk (`x-chunk-last:
- * true`) triggers the final clustering pass over every chunk's embeddings
- * TOGETHER — see runDiarizationCore.ts's extractEmbeddingSpans/
- * clusterEmbeddingSpans split — seeded against the company-wide voice
- * library (voiceLibrary.ts) so a previously-enrolled colleague is
- * auto-labeled instead of `speaker_N`, and returns the complete,
- * speaker-consistent result (plus each speaker's final centroid, for
- * transcript/route.ts to persist) for the whole meeting; every earlier
- * chunk gets a bare ack.
- *
- * Accumulator state is in-memory (not persisted) — same tradeoff
- * transcribe/route.ts's resultCache already makes: fine behind a single
- * server instance, would need a shared store (Redis, DB row) behind a
- * load balancer with multiple instances so any instance can see any
- * meeting's earlier chunks.
+ * Long recordings are sent sequentially in ~15-minute PCM slices. Non-text
+ * mode keeps speaker embeddings across slices so clustering is consistent for
+ * the whole meeting. The accumulator is intentionally process-local, but the
+ * explicit run id + chunk index/count protocol makes that safe: if the Node
+ * process restarts, any later chunk fails with CHUNK_RUN_LOST and the client
+ * restarts the whole run from chunk 0 instead of silently returning a partial
+ * whole-meeting result.
  */
 
 interface AccumulatedSegment {
@@ -41,19 +29,14 @@ interface AccumulatedSegment {
 interface MeetingAccumulator {
   segments: AccumulatedSegment[];
   rawSpans: RawEmbeddingSpan[];
+  received: Set<number>;
+  chunkCount: number;
+  sampleRate: number;
   updatedAt: number;
 }
 
 const accumulators = new Map<string, MeetingAccumulator>();
-// A long meeting's chunks can take a while to arrive one at a time (each
-// chunk is a real ~15-minute transcription) — generous relative to
-// transcribe/route.ts's 10-minute resultCache TTL, which covers one shot.
 const ACCUMULATOR_TTL_MS = 60 * 60 * 1000;
-
-// Each chunk is at most CHUNK_DURATION_SEC (15 min) of 16-bit PCM. At the
-// top of the supported sample-rate range (48kHz mono, 2 bytes/sample)
-// that's ~86MB; cap generously above that to bound memory/CPU per request
-// without rejecting a legitimate slice.
 const MAX_PCM_BYTES = 100 * 1024 * 1024;
 
 function pruneStaleAccumulators() {
@@ -79,9 +62,15 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const protocol = parseChunkRunHeaders(req.headers);
+  if (!protocol.ok) {
+    return NextResponse.json({ error: protocol.error }, { status: 400 });
+  }
+  const { runId, chunkIndex, chunkCount } = protocol.value;
+  const isLast = chunkIndex === chunkCount - 1;
+
   const sampleRate = Number(req.headers.get("x-sample-rate"));
   const offsetSec = Number(req.headers.get("x-chunk-offset-sec"));
-  const isLast = req.headers.get("x-chunk-last") === "true";
   const textOnly = req.headers.get("x-text-only") === "true";
   if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
     return NextResponse.json({ error: "x-sample-rate header is required" }, { status: 400 });
@@ -103,19 +92,14 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     return NextResponse.json({ error: "Audio chunk too large" }, { status: 413 });
   }
 
-  pruneStaleAccumulators();
-  const key = params.meetingId;
-  const acc: MeetingAccumulator = accumulators.get(key) ?? { segments: [], rawSpans: [], updatedAt: Date.now() };
-
   let releaseSlot: (() => void) | undefined;
   try {
     releaseSlot = await acquireMeetingSttSlot();
     const audio = decodeInt16Pcm(pcmBuffer);
     const stt = new ServerWhisperProvider(meeting.sttLanguage);
 
-    // Overview generation only needs text. The processing client uses this
-    // mode first so it can persist STT and start Dify immediately, then runs
-    // speaker detection through /diarize-chunk in the background.
+    // Text-only processing has no cross-chunk server state: each result is
+    // returned immediately and the browser combines them.
     if (textOnly) {
       const sttResult = await stt.transcribe(audio, sampleRate);
       return NextResponse.json({
@@ -127,43 +111,114 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
       });
     }
 
-    const diarization = new ServerDiarizationProviderReal();
-    const [sttResult, rawSpans] = await Promise.all([
-      stt.transcribe(audio, sampleRate),
-      diarization.extractEmbeddingSpans(audio, sampleRate, offsetSec).catch((err) => {
-        console.warn(
-          "[meeting] Chunked diarization failed for one chunk, continuing without its spans:",
-          err instanceof Error ? err.message : String(err),
-        );
-        return [] as RawEmbeddingSpan[];
-      }),
-    ]);
+    pruneStaleAccumulators();
+    const key = `${params.meetingId}:${runId}`;
+    let acc = accumulators.get(key);
 
-    acc.segments.push(
-      ...sttResult.segments.map((s) => ({ start: s.start + offsetSec, end: s.end + offsetSec, text: s.text })),
-    );
-    acc.rawSpans.push(...rawSpans);
-    acc.updatedAt = Date.now();
-    accumulators.set(key, acc);
+    if (chunkIndex === 0) {
+      // A retried chunk 0 deliberately restarts this run. Sequential clients
+      // cannot have later chunks committed before chunk 0 is acknowledged.
+      acc = {
+        segments: [],
+        rawSpans: [],
+        received: new Set<number>(),
+        chunkCount,
+        sampleRate,
+        updatedAt: Date.now(),
+      };
+      accumulators.set(key, acc);
+    } else if (!acc) {
+      return NextResponse.json(
+        {
+          error: "Chunk run state was lost; restart from chunk 0.",
+          code: "CHUNK_RUN_LOST",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (acc.chunkCount !== chunkCount || acc.sampleRate !== sampleRate) {
+      accumulators.delete(key);
+      return NextResponse.json(
+        {
+          error: "Chunk run parameters changed; restart from chunk 0.",
+          code: "CHUNK_RUN_MISMATCH",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (!acc.received.has(chunkIndex)) {
+      const diarization = new ServerDiarizationProviderReal();
+      const [sttResult, rawSpans] = await Promise.all([
+        stt.transcribe(audio, sampleRate),
+        diarization.extractEmbeddingSpans(audio, sampleRate, offsetSec).catch((err) => {
+          console.warn(
+            "[meeting] Chunked diarization failed for one chunk, continuing without its spans:",
+            err instanceof Error ? err.message : String(err),
+          );
+          return [] as RawEmbeddingSpan[];
+        }),
+      ]);
+
+      acc.segments.push(
+        ...sttResult.segments.map((s) => ({
+          start: s.start + offsetSec,
+          end: s.end + offsetSec,
+          text: s.text,
+        })),
+      );
+      acc.rawSpans.push(...rawSpans);
+      acc.received.add(chunkIndex);
+      acc.updatedAt = Date.now();
+      accumulators.set(key, acc);
+    }
+
+    if (!isLast) return NextResponse.json({ ok: true, duplicate: acc.received.has(chunkIndex) });
+
+    const missing = missingChunkIndexes(acc.received, chunkCount);
+    if (missing.length > 0) {
+      accumulators.delete(key);
+      return NextResponse.json(
+        {
+          error: "Chunk run is incomplete; restart from chunk 0.",
+          code: "CHUNK_RUN_INCOMPLETE",
+          missingChunkIndices: missing,
+        },
+        { status: 409 },
+      );
+    }
+
+    accumulators.delete(key);
+    const seedProfiles = await loadVoiceProfileSeeds();
+    const { spans, centroids } = clusterEmbeddingSpans(acc.rawSpans, seedProfiles);
+    return NextResponse.json({
+      segments: acc.segments,
+      spans,
+      centroids: serializeCentroids(centroids),
+    });
   } catch (err) {
     if (err instanceof MeetingSttBusyError) {
-      return NextResponse.json({ error: "Server STT is busy; retry shortly." }, { status: 429, headers: { "Retry-After": "5" } });
+      return NextResponse.json(
+        { error: "Server STT is busy; retry shortly." },
+        { status: 429, headers: { "Retry-After": "5" } },
+      );
     }
+    const key = `${params.meetingId}:${runId}`;
     if (!textOnly) accumulators.delete(key);
     console.warn("[meeting] Chunked transcription failed:", err instanceof Error ? err.message : String(err));
     return NextResponse.json({ error: "Transcription failed" }, { status: 500 });
   } finally {
     releaseSlot?.();
   }
-
-  if (!isLast) return NextResponse.json({ ok: true });
-
-  accumulators.delete(key);
-  const seedProfiles = await loadVoiceProfileSeeds();
-  const { spans, centroids } = clusterEmbeddingSpans(acc.rawSpans, seedProfiles);
-  return NextResponse.json({ segments: acc.segments, spans, centroids: serializeCentroids(centroids) });
 }
 
-function serializeCentroids(centroids: { speakerIndex: number; embedding: Float32Array; recognizedName?: string }[]) {
-  return centroids.map((c) => ({ speakerIndex: c.speakerIndex, embedding: Array.from(c.embedding), recognizedName: c.recognizedName }));
+function serializeCentroids(
+  centroids: { speakerIndex: number; embedding: Float32Array; recognizedName?: string }[],
+) {
+  return centroids.map((c) => ({
+    speakerIndex: c.speakerIndex,
+    embedding: Array.from(c.embedding),
+    recognizedName: c.recognizedName,
+  }));
 }
