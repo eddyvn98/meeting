@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q")?.trim();
   const dateParam = req.nextUrl.searchParams.get("date")?.trim();
   const now = new Date();
+  const callerEmail = email.trim().toLowerCase();
 
   const activeShares = await prisma.meetingShare.findMany({
     where: {
@@ -43,8 +44,20 @@ export async function GET(req: NextRequest) {
   const sharedMeetingIds = activeShares.map((s) => s.meetingId);
   const sharedGroupByMeeting = new Map(activeShares.map((s) => [s.meetingId, s.groupId]));
 
+  // A calendar attendee is a natural member of the Teams room. The bot
+  // session is linked to the Meeting as soon as capture starts, so the live
+  // Meeting appears in every attendee's list without creating MeetingShare
+  // rows or making the inviter special.
+  const attendeeSessions = await prisma.meetingBotSession.findMany({
+    where: { meetingId: { not: null }, attendeeEmails: { has: callerEmail } },
+    select: { meetingId: true },
+  });
+  const attendeeMeetingIds = attendeeSessions.flatMap((session) => session.meetingId ? [session.meetingId] : []);
+  const attendeeMeetingIdSet = new Set(attendeeMeetingIds);
+  const accessibleMeetingIds = [...new Set([...sharedMeetingIds, ...attendeeMeetingIds])];
+
   const where: Prisma.MeetingWhereInput = {
-    OR: [{ ownerEmail: { equals: email, mode: "insensitive" } }, { id: { in: sharedMeetingIds } }],
+    OR: [{ ownerEmail: { equals: email, mode: "insensitive" } }, { id: { in: accessibleMeetingIds } }],
   };
 
   if (q) {
@@ -81,7 +94,10 @@ export async function GET(req: NextRequest) {
   const ownedAndShared = new Set(activeShareMeetingIds.map((s) => s.meetingId));
   const sharedWithMeSet = new Set(
     meetings
-      .filter((m) => m.ownerEmail.toLowerCase() !== email.toLowerCase() && sharedGroupByMeeting.has(m.id))
+      .filter((m) =>
+        m.ownerEmail.toLowerCase() !== callerEmail &&
+        (sharedGroupByMeeting.has(m.id) || attendeeMeetingIdSet.has(m.id))
+      )
       .map((m) => m.id),
   );
 
