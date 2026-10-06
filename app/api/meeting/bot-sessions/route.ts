@@ -65,8 +65,7 @@ export async function POST(req: NextRequest) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-bot:${meetingIdentity}`}))`;
     const candidates = await tx.meetingBotSession.findMany({
       where: { status: { in: ACTIVE_STATUSES } },
-      orderBy: { createdAt: "desc" },
-      take: 200,
+      orderBy: { createdAt: "desc" }
     });
     const existing = candidates.find(
       (session) => teamsMeetingIdentity(session.meetingUrl) === meetingIdentity,
