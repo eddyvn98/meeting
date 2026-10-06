@@ -10,7 +10,7 @@ import type { Meeting } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { emailConfig, sendNotificationEmail } from "./notifyEmail";
 
-export type MeetingNotificationType = "COMMENT" | "REPLY" | "SHARE_INVITE";
+export type MeetingNotificationType = "COMMENT" | "REPLY" | "SHARE_INVITE" | "LIVE_ROOM";
 
 /** At most one email per recipient and meeting in this window; the bell still gets every item. */
 const EMAIL_THROTTLE_MS = 10 * 60_000;
@@ -22,7 +22,7 @@ function appBaseUrl(): string {
   return (process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "");
 }
 
-async function deliver(meeting: Meeting, recipients: { email: string; type: MeetingNotificationType; body: string }[], extra: { anchorId?: string; commentId?: string; actorEmail: string }) {
+async function deliver(meeting: Meeting, recipients: { email: string; type: MeetingNotificationType; body: string }[], extra: { anchorId?: string; commentId?: string; actorEmail: string; linkSuffix?: string }) {
   if (recipients.length === 0) return;
   const created = await Promise.all(
     recipients.map((r) =>
@@ -33,14 +33,14 @@ async function deliver(meeting: Meeting, recipients: { email: string; type: Meet
   );
   if (!emailConfig()) return;
 
-  const link = `${appBaseUrl()}/meeting/${meeting.id}${extra.anchorId ? "/minutes" : ""}`;
+  const link = `${appBaseUrl()}/meeting/${meeting.id}${extra.linkSuffix ?? (extra.anchorId ? "/minutes" : "")}`;
   for (const row of created) {
     const recent = await prisma.meetingNotification.findFirst({
       where: { recipientEmail: row.recipientEmail, meetingId: meeting.id, emailedAt: { gt: new Date(Date.now() - EMAIL_THROTTLE_MS) } },
       select: { id: true },
     });
     if (recent) continue;
-    const sent = await sendNotificationEmail({ to: row.recipientEmail, subject: `${meeting.title} — ${row.type === "SHARE_INVITE" ? "shared with you" : "new comment"}`, text: row.body, link });
+    const sent = await sendNotificationEmail({ to: row.recipientEmail, subject: `${meeting.title} — ${row.type === "SHARE_INVITE" ? "shared with you" : row.type === "LIVE_ROOM" ? "live transcript started" : "new comment"}`, text: row.body, link });
     if (sent) await prisma.meetingNotification.update({ where: { id: row.id }, data: { emailedAt: new Date() } });
   }
 }
@@ -74,5 +74,50 @@ export async function notifyShareInvite(meeting: Meeting, invitedEmail: string, 
     await deliver(meeting, [{ email: lower(invitedEmail), type: "SHARE_INVITE", body: `${actorEmail} shared "${meeting.title}" with you (${role})` }], { actorEmail });
   } catch {
     // Best-effort.
+  }
+}
+
+
+/** Notifies every known member of a Teams shared room that live STT is ready.
+ *  Idempotent per recipient + meeting so CAPTURING heartbeats and later
+ *  identity discoveries can safely call this repeatedly; only newly
+ *  discovered attendees receive a new item. */
+export async function notifyLiveRoomStarted(
+  meeting: Meeting,
+  participantEmails: string[],
+  actorEmail = "meeting-bot",
+): Promise<void> {
+  try {
+    const recipientSet = new Set(
+      [meeting.ownerEmail, ...participantEmails]
+        .map(lower)
+        .filter(Boolean),
+    );
+    if (recipientSet.size === 0) return;
+
+    const recipients = [...recipientSet];
+    const existing = await prisma.meetingNotification.findMany({
+      where: {
+        meetingId: meeting.id,
+        type: "LIVE_ROOM",
+        recipientEmail: { in: recipients },
+      },
+      select: { recipientEmail: true },
+    });
+    const alreadyNotified = new Set(existing.map((row) => lower(row.recipientEmail)));
+    const pending = recipients
+      .filter((email) => !alreadyNotified.has(email))
+      .map((email) => ({
+        email,
+        type: "LIVE_ROOM" as const,
+        body: `Live STT is ready for "${meeting.title}". Open the shared room to follow the transcript in real time.`,
+      }));
+
+    await deliver(meeting, pending, {
+      actorEmail,
+      linkSuffix: "?tab=transcript",
+    });
+  } catch {
+    // Best-effort: a notification failure must never interrupt capture.
   }
 }

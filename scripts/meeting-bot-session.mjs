@@ -21,7 +21,7 @@ import {
   isStopRejoinError,
 } from "./meeting-bot-recovery.mjs";
 import {
-  clickIfVisible,
+  ensurePeoplePanelOpen,
   errorCode,
   prepareTeamsPage,
   readTeamsPage,
@@ -58,7 +58,7 @@ export function createBotSessionRunner(config) {
       ...(browserExecutable ? { executablePath: browserExecutable } : {}),
       headless,
       args: [
-        "--no-sandbox",
+        ...(process.env.MEETING_BOT_DISABLE_CHROMIUM_SANDBOX === "true" ? ["--no-sandbox"] : []),
         "--disable-dev-shm-usage",
         "--disable-notifications",
       ],
@@ -104,12 +104,16 @@ export function createBotSessionRunner(config) {
       authenticated: runtime.authenticated,
       requireMediaOff,
     });
-    return waitForTeamsJoin(runtime.page, {
+    const joined = await waitForTeamsJoin(runtime.page, {
       sessionId: session.id,
       updateStatus: heartbeat.update,
       shouldStop: control.shouldStop,
       timeoutMs,
     });
+    if (joined) {
+      await ensurePeoplePanelOpen(runtime.page).catch(() => false);
+    }
+    return joined;
   }
   const recovery = createTeamsRecovery({
     launchTeams,
@@ -137,10 +141,7 @@ export function createBotSessionRunner(config) {
       sink = await createPulseAudioSession(session.id);
       teamsRuntime = await launchTeams(sink.sinkName, storageState);
       if (!await joinTeams(teamsRuntime, session, heartbeat)) return;
-      const peopleOpened = await clickIfVisible(
-        teamsRuntime.page,
-        [/^People$/i, /^Participants$/i, /Người tham gia/i],
-      ).catch(() => false);
+      const peopleOpened = await ensurePeoplePanelOpen(teamsRuntime.page).catch(() => false);
       logIdentityDiagnostic(
         session.id,
         "teams",
@@ -537,13 +538,18 @@ export function createBotSessionRunner(config) {
       await closeTeams(teamsRuntime);
       teamsRuntime = null;
       await recorderRuntime.finish(recorder);
-      const timedOut = await recorderRuntime.waitForProcessing(
+      const processingOutcome = await recorderRuntime.waitForProcessing(
         recorder, session, heartbeat, recordedMs,
       );
-      if (timedOut) {
+      if (processingOutcome === "TIMEOUT") {
         await heartbeat.update("FAILED", {
           meetingId: recorder.meetingId,
           errorMessage: "Processing timed out. The recording was preserved and can be retried.",
+        });
+      } else if (processingOutcome === "FAILED") {
+        await heartbeat.update("FAILED", {
+          meetingId: recorder.meetingId,
+          errorMessage: "Meeting transcription or processing failed. The recording was preserved for retry.",
         });
       } else {
         await heartbeat.update("ENDED", {

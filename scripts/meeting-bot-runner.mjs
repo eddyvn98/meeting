@@ -28,13 +28,6 @@ const configuredMaxConcurrency = Math.max(
 const teamsAuthMode = resolveTeamsAuthMode();
 const maxConcurrency = teamsAuthMode === "authenticated" ? 1 : configuredMaxConcurrency;
 
-const nextAuthSecret = process.env.NEXTAUTH_SECRET?.trim();
-if (!nextAuthSecret) throw new Error("NEXTAUTH_SECRET is required for the meeting bot STT session.");
-const configuredBotSecret = process.env.MEETING_BOT_STT_NEXTAUTH_SECRET?.trim();
-if (configuredBotSecret && configuredBotSecret !== nextAuthSecret) {
-  throw new Error("MEETING_BOT_STT_NEXTAUTH_SECRET must match NEXTAUTH_SECRET.");
-}
-
 const teamsDisplayName =
   process.env.MEETING_BOT_TEAMS_DISPLAY_NAME?.trim() || "Meeting STT Assistant";
 const browserChannel = process.env.MEETING_BOT_BROWSER_CHANNEL || undefined;
@@ -44,7 +37,8 @@ const requireMediaOff = process.env.MEETING_BOT_REQUIRE_MEDIA_OFF !== "false";
 
 const recorderRuntime = createMeetingRecorderRuntime({
   baseUrl,
-  sttAuthSecret: nextAuthSecret,
+  runnerToken,
+  runnerId,
   teamsDisplayName,
   browserChannel,
   browserExecutable,

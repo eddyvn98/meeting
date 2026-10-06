@@ -1,10 +1,10 @@
 import { chromium } from "@playwright/test";
-import { encode } from "next-auth/jwt";
 import { clickIfVisible, codedError } from "./meeting-bot-teams.mjs";
 
 export function createMeetingRecorderRuntime({
   baseUrl,
-  sttAuthSecret,
+  runnerToken,
+  runnerId,
   teamsDisplayName,
   browserChannel,
   browserExecutable,
@@ -18,25 +18,24 @@ export function createMeetingRecorderRuntime({
   const isInsecureLocalBaseUrl = baseUrl.startsWith("http://");
 
   async function authenticate(context, session) {
-    const now = Math.floor(Date.now() / 1000);
-    const email = process.env.MEETING_BOT_STT_EMAIL?.trim() || session.ownerEmail;
-    const token = await encode({
-      token: {
-        sub: `meeting-bot:${email}`,
-        email,
-        name: teamsDisplayName,
-        userId: `meeting-bot:${email}`,
-        displayName: teamsDisplayName,
-        isDevSession: true,
-        iat: now,
-        exp: now + 12 * 60 * 60,
+    const response = await fetch(`${baseUrl}/api/meeting/bot-sessions/stt-token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-meeting-bot-token": runnerToken,
+        "x-meeting-bot-runner-id": runnerId,
       },
-      secret: sttAuthSecret,
+      body: JSON.stringify({ sessionId: session.id }),
+      signal: AbortSignal.timeout(30_000),
     });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || typeof data.token !== "string" || typeof data.cookieName !== "string") {
+      throw new Error(data.error || `Failed to issue recorder session token (${response.status}).`);
+    }
     const secure = baseUrl.startsWith("https://");
     await context.addCookies([{
-      name: secure ? "__Secure-next-auth.session-token" : "next-auth.session-token",
-      value: token,
+      name: data.cookieName,
+      value: data.token,
       url: baseUrl,
       secure,
       httpOnly: true,
@@ -51,7 +50,7 @@ export function createMeetingRecorderRuntime({
       headless,
       env: { ...process.env, PULSE_SOURCE: sourceName },
       args: [
-        "--no-sandbox",
+        ...(process.env.MEETING_BOT_DISABLE_CHROMIUM_SANDBOX === "true" ? ["--no-sandbox"] : []),
         "--disable-dev-shm-usage",
         "--autoplay-policy=no-user-gesture-required",
         "--disable-notifications",
@@ -172,14 +171,14 @@ export function createMeetingRecorderRuntime({
         const response = await requestContext.get(meetingUrl);
         if (response.ok()) {
           const data = await response.json();
-          if (data?.status === "FAILED") return false;
+          if (data?.status === "FAILED") return "FAILED";
           if (data?.status === "READY") {
             readySeenAt ??= Date.now();
             const diarizationStatus = await recorder.page.evaluate(() => {
               return window.__meetingDiarizationStatus ?? null;
             }).catch(() => null);
-            if (diarizationStatus === "done" || diarizationStatus === "failed") return false;
-            if (diarizationStatus === null && Date.now() - readySeenAt >= 10_000) return false;
+            if (diarizationStatus === "done" || diarizationStatus === "failed") return "READY";
+            if (diarizationStatus === null && Date.now() - readySeenAt >= 10_000) return "READY";
           }
         }
       } catch {
@@ -192,13 +191,13 @@ export function createMeetingRecorderRuntime({
       console.log(
         `[meeting-bot] session ${session.id} diarization did not finish before the processing timeout; keeping the usable READY transcript.`,
       );
-      return false;
+      return "READY";
     }
 
     console.error(
       `[meeting-bot] session ${session.id} processing timed out after ${timeoutMs}ms; preserving audio and marking the run retryable.`,
     );
-    return true;
+    return "TIMEOUT";
   }
 
   async function dispose(recorder) {

@@ -80,6 +80,21 @@ export async function ensurePreJoinMediaOff(page, { required = true } = {}) {
   return { microphoneOff, cameraOff };
 }
 
+
+export async function ensurePeoplePanelOpen(page) {
+  if (page.isClosed()) return false;
+  const roster = page.locator([
+    '[data-tid*="roster" i]:visible',
+    '[aria-label*="participants" i]:visible',
+    '[aria-label*="people" i]:visible',
+  ].join(",")).first();
+  if (await roster.isVisible().catch(() => false)) return true;
+  const clicked = await clickIfVisible(page, [/^People$/i, /^Participants$/i, /Người tham gia/i]);
+  if (!clicked) return false;
+  await page.waitForTimeout(250).catch(() => undefined);
+  return roster.isVisible().catch(() => false);
+}
+
 export async function prepareTeamsPage(
   page,
   session,

@@ -208,7 +208,7 @@ export function MeetingHome() {
 								<li key={meeting.id}>
 									<button
 										type="button"
-										onClick={() => router.push(`/meeting/${meeting.id}`)}
+										onClick={() => router.push(meeting.isLive ? `/meeting/${meeting.id}?tab=transcript` : `/meeting/${meeting.id}`)}
 										className="flex w-full items-center justify-between gap-4 p-4 text-left transition-colors hover:bg-muted"
 									>
 										<div className="flex items-center gap-3 min-w-0">

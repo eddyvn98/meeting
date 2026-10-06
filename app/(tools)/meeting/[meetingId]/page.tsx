@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Radio, Users } from "lucide-react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import ProtectedRoute from "@/components/features/auth/protected-route";
 import { useToolLayoutSlots } from "@/hooks/use-tool-layout-slots";
@@ -237,6 +238,26 @@ export default function MeetingResultPage() {
 								/>
 							}
 						/>
+						{detail.isLive && (
+							<div className="mx-4 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 sm:mx-6">
+								<div className="flex min-w-0 items-center gap-3">
+									<span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+										<Radio className="h-4 w-4" />
+										<span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-background animate-pulse" />
+									</span>
+									<div className="min-w-0">
+										<p className="text-sm font-semibold text-foreground">Shared live STT room</p>
+										<p className="text-xs text-muted-foreground">
+											Everyone with meeting access sees the same live transcript.
+										</p>
+									</div>
+								</div>
+								<div className="flex items-center gap-2 text-xs text-muted-foreground">
+									<Users className="h-3.5 w-3.5" />
+									<span>{detail.participantNames.length > 0 ? `${detail.participantNames.length} participants detected` : "Participants syncing"}</span>
+								</div>
+							</div>
+						)}
 						<MeetingAudioPlayer audioUrl={detail.audioUrl} meetingTitle={detail.title} audioExpiry={audioExpiry} />
 						{detail.isMockResult && <MeetingMockResultBanner meetingId={meetingId} />}
 						<MeetingAudioExpiryBanner meeting={detail} />

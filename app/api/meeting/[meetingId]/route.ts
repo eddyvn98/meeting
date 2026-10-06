@@ -41,7 +41,7 @@ export async function GET(req: NextRequest, { params }: { params: { meetingId: s
     }),
     prisma.meetingBotSession.findUnique({
       where: { meetingId: meeting.id },
-      select: { participantNames: true },
+      select: { participantNames: true, status: true },
     }),
   ]);
 
@@ -50,6 +50,7 @@ export async function GET(req: NextRequest, { params }: { params: { meetingId: s
   const detail: MeetingDetail = {
     ...serializeMeeting(meeting),
     participantNames: botSession?.participantNames ?? [],
+    isLive: botSession?.status === "CAPTURING",
     speakers: speakers.map(serializeSpeaker),
     speakerMappings: speakerMappings.map(serializeSpeakerMapping),
     transcriptSegments: segments.map((s) => serializeTranscriptSegment(s, mappingsByKey)),

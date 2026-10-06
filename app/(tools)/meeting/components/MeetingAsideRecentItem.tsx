@@ -161,7 +161,7 @@ export function MeetingAsideRecentItem({
 			}`}
 		>
 			<Link
-				href={meeting.sharedWithMe || meeting.isLive || meeting.status === "READY" ? `/meeting/${meeting.id}` : `/meeting/${meeting.id}/processing`}
+				href={meeting.isLive ? `/meeting/${meeting.id}?tab=transcript` : meeting.sharedWithMe || meeting.status === "READY" ? `/meeting/${meeting.id}` : `/meeting/${meeting.id}/processing`}
 				className="flex min-w-0 flex-1 items-center gap-2"
 			>
 				{expiry && retentionDays !== null ? (
