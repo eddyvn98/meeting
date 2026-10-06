@@ -11,7 +11,7 @@ Email identity must never be guessed from a display name.
 The runner accumulates attendee emails from multiple independent sources:
 
 1. **Teams Web People/Profile cards** — while the bot is already inside the meeting, inspect participant/contact cards and accept only email addresses visibly exposed by Teams.
-2. **Outlook Web Calendar** — authenticated bot mode opens Outlook Calendar in a second tab, finds the meeting by title, opens the event card, and reads visible attendee email addresses.
+2. **Outlook Web Calendar** — a saved Microsoft browser session opens Outlook Calendar, verifies the matching Teams event, and reads the invitee email list. This session is independent of whether the Teams join itself is Guest or authenticated.
 3. **Microsoft Graph Calendar** — optional compatibility source when an administrator has configured Graph credentials.
 
 All sources are merged into `MeetingBotSession.attendeeEmails`. Browser-derived updates are unioned with existing values and never erase a stronger source.
@@ -44,7 +44,7 @@ The People panel still uses the existing best-effort roster reader for display n
 
 ## Outlook Web fallback
 
-Authenticated mode reuses the same saved Microsoft browser session in a second tab.
+A saved Microsoft browser session is used to read Outlook. If the Teams join is authenticated, the same session can be reused. If the Teams join is Guest, the runner can launch a separate authenticated Outlook browser using `MEETING_BOT_IDENTITY_AUTH_STATE`.
 
 The fallback:
 
@@ -72,7 +72,7 @@ Best identity coverage:
 
 ### Guest bot
 
-The guest can still read the Teams People panel display names when Teams exposes them, but email visibility is not guaranteed. Outlook Web fallback is not available because the guest has no signed-in Microsoft session.
+The Guest Teams page can still read People/profile data when Teams exposes it. In addition, Guest join can use a **separate authenticated Outlook identity session** from `MEETING_BOT_IDENTITY_AUTH_STATE`, so invited people who never join can still receive shared-room access. If that auth state is missing or expired, invite-list discovery degrades but recording/STT continues.
 
 ## Resilience model
 
@@ -157,27 +157,32 @@ If Stagehand or another AI browser-agent fallback is added later, keep it behind
 
 ## When participant email extraction runs
 
-Identity collection follows actual meeting presence, not the invitation list.
+Shared-room membership is the union of:
+
+1. **people invited to the verified Outlook/Teams event**, whether they attend or not; and
+2. **people actually observed in Teams**, including ad-hoc attendees who were not on the original invitation, when their email can be resolved safely.
 
 | Situation | Behavior |
 | --- | --- |
-| Meeting is only scheduled | No participant email extraction yet. |
-| Meeting is cancelled before the bot joins | No participant email is granted from the cancelled meeting. The join/session lifecycle handles the failure separately. |
-| Bot is waiting in the lobby | No participant email extraction yet because the bot cannot reliably inspect the live People roster. |
-| Bot is admitted / capture starts | Open People and run an immediate identity probe. |
-| Meeting starts with only one or a few people | Resolve whoever is actually visible; do not wait for the full invited group. |
-| A new participant joins later | Roster polling notices a new display name and triggers an identity probe immediately instead of waiting for the periodic probe. |
-| A participant leaves | Keep any already verified attendee email. Leaving the call does not revoke access to the shared meeting result. |
-| A participant leaves before email resolution | Their display name remains in the historical observed roster; authenticated Outlook fallback may still resolve that observed name later. |
-| A participant rejoins | The historical roster/email sets deduplicate the participant; no duplicate access record is created. |
-| Long meeting with no roster change | Run a periodic identity retry every 60 seconds to recover from transient UI/profile-card failures. |
-| Meeting is ending | Run one final best-effort identity probe before the bot closes Teams. |
-| External/anonymous participant exposes no email | Do not guess. They do not receive automatic account-based access unless another trusted source resolves them or someone explicitly shares the meeting. |
+| Meeting is only scheduled, bot has not joined | No shared live Meeting exists yet from this runner, so no browser identity extraction is needed. |
+| Meeting is cancelled before the bot joins | The bot never starts capture; no live room is created by this run. |
+| Bot is waiting in the lobby | Do not start shared-room identity collection yet. |
+| Bot is admitted / capture starts | Immediately verify the Outlook event by Teams join URL and ingest the full visible invitee email list. Then probe Teams People/profile cards. |
+| Invited person never joins | They still keep access because membership comes from the verified invitation list. |
+| Meeting starts with only some invitees present | All discovered invitees can see the live room; present participants are also probed through Teams. |
+| A new invited person joins later | They already have access from Outlook; Teams probe may confirm/add identity data. |
+| An uninvited/ad-hoc person joins | Teams profile/contact extraction may add their email and grant access. Never guess from display name. |
+| A participant leaves early | Keep access permanently for that meeting/result. |
+| A participant rejoins | Email/name sets are deduplicated; no duplicate access entry is created. |
+| Invitation list changes during a long meeting | Outlook is retried every 5 minutes so newly invited people can gain access. |
+| Teams UI/profile extraction transiently fails | Retry every 60 seconds and immediately when a new roster name appears. |
+| Meeting is ending | Refresh Outlook invitees and run one final Teams identity probe before closing the browser. |
+| External/anonymous participant exposes no email and is not resolvable from the invite list | Do not guess; explicit share remains the fallback. |
 
 ### Authorization rule
 
-Outlook is an identity resolver, not the authorization source.
+A **verified Outlook invitation list is authoritative for invitees** only after the event's Teams join URL matches the active bot session. Meeting title alone is never sufficient.
 
-The bot first observes a participant in the Teams People roster. Only then may authenticated Outlook Web be used to resolve that observed display name to an email. A person who is merely invited in Outlook but never appears in Teams must not gain automatic shared-room access.
+Teams People/profile cards are the complementary source for actual attendees, especially people who joined ad hoc and were not present in the original invitation.
 
-Once an observed participant is resolved to a verified email, that email remains on the MeetingBotSession for the whole meeting and post-meeting result.
+Once an email is accepted from either trusted source, it remains on `MeetingBotSession.attendeeEmails` for the live room and post-meeting result.
