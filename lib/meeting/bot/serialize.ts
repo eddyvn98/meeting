@@ -16,7 +16,6 @@ export function serializeMeetingBotSession(row: PrismaMeetingBotSession): Meetin
     meetingId: row.meetingId,
     participantNames: sanitizeParticipantNames(row.participantNames),
     attendeeEmails: row.attendeeEmails,
-    presentAttendeeEmails: row.presentAttendeeEmails,
     speakerObservations: parseSpeakerObservations(row.speakerObservations),
     lastHeartbeatAt: row.lastHeartbeatAt?.toISOString() ?? null,
     errorMessage: row.errorMessage,
