@@ -44,12 +44,17 @@ describe("Microsoft Graph bot mailbox helpers", () => {
       start: { dateTime: "2026-10-05T02:00:00", timeZone: "UTC" },
       onlineMeeting: { joinUrl: "https://teams.microsoft.com/l/meetup-join/abc" },
       organizer: { emailAddress: { address: "alice@example.com" } },
-      attendees: [{ emailAddress: { address: "meetingbot@example.com" } }],
+      attendees: [
+        { emailAddress: { address: "meetingbot@example.com" } },
+        { emailAddress: { address: "bob@example.com" } },
+        { emailAddress: { address: "BOB@example.com" } },
+      ],
       isOrganizer: false,
       responseStatus: { response: "notResponded" },
     }, config);
     expect(item).toMatchObject({
       ownerEmail: "alice@example.com",
+      attendeeEmails: ["bob@example.com"],
       organizerAllowed: true,
       invited: true,
       meetingUrl: "https://teams.microsoft.com/l/meetup-join/abc",
