@@ -46,6 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
   }
   const participantNames =
     body.participantNames === undefined ? undefined : sanitizeParticipantNames(body.participantNames);
+  const previousAttendeeCount = session.attendeeEmails.length;
   const attendeeEmails =
     body.attendeeEmails === undefined
       ? undefined
@@ -97,6 +98,12 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     }
     return nextSession;
   });
+  if (attendeeEmails !== undefined && updated.attendeeEmails.length > previousAttendeeCount) {
+    console.log(
+      `[meeting-bot][identity] session=${session.id} source=server code=ATTENDEE_EMAILS_PERSISTED ` +
+      `added=${updated.attendeeEmails.length - previousAttendeeCount} totalEmails=${updated.attendeeEmails.length}`,
+    );
+  }
   if (["ENDED", "FAILED"].includes(status)) {
     maybePruneTerminalBotSessions(updated.ownerEmail);
   }
