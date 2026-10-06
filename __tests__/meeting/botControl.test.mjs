@@ -60,4 +60,52 @@ describe("meeting bot session control", () => {
 
     await expect(control.shouldStop("session-1")).resolves.toBe(false);
   });
+  it("serializes heartbeat writes so an older request cannot finish after a newer transition", async () => {
+    const calls = [];
+    let releaseFirst;
+    const first = new Promise((resolve) => { releaseFirst = resolve; });
+    const emit = vi.fn(async (_sessionId, status, extra) => {
+      calls.push({ status, expectedStatus: extra.expectedStatus });
+      if (calls.length === 1) await first;
+      return { status, runnerId: "runner-a" };
+    });
+    const control = createSessionControl({
+      api: vi.fn(),
+      emit,
+      runnerId: "runner-a",
+    });
+    const heartbeat = control.createHeartbeat("session-1");
+
+    const joining = heartbeat.update("JOINING");
+    const joined = heartbeat.update("JOINED");
+    await Promise.resolve();
+    expect(calls).toEqual([{ status: "JOINING", expectedStatus: "CLAIMED" }]);
+
+    releaseFirst();
+    await joining;
+    await joined;
+    heartbeat.stop();
+
+    expect(calls).toEqual([
+      { status: "JOINING", expectedStatus: "CLAIMED" },
+      { status: "JOINED", expectedStatus: "JOINING" },
+    ]);
+  });
+
+  it("treats a concurrent server stop request as a successful race", async () => {
+    const conflict = Object.assign(new Error("Stale bot lifecycle update."), { status: 409 });
+    const emit = vi.fn(async () => { throw conflict; });
+    const api = vi.fn(async () => ({
+      status: "STOP_REQUESTED",
+      runnerId: "runner-a",
+    }));
+    const control = createSessionControl({ api, emit, runnerId: "runner-a" });
+    const heartbeat = control.createHeartbeat("session-1");
+
+    await expect(heartbeat.update("CAPTURING")).resolves.toMatchObject({
+      status: "STOP_REQUESTED",
+    });
+    heartbeat.stop();
+  });
+
 });
