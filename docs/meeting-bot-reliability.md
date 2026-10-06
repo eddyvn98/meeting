@@ -172,7 +172,7 @@ These are release blockers, not best-effort checks:
 - A recorder token may create exactly one Meeting for its claimed bot session.
 - After binding, that token may access only the recorder/STT/diarization endpoints for that Meeting plus read-only voice-profile seeds and stateless live translation.
 - The recorder token must not administer bot sessions/schedules, list the owner's meetings, access another Meeting, or create shares/comments/public links.
-- Recorder session tokens expire after six hours.
+- Recorder session tokens are bounded: at least six hours, extended to the configured maximum meeting duration plus finalize grace when needed, and capped at 24 hours.
 - Calendar/Outlook invitees retain shared transcript access even if they never join the live Teams call; this is intentional product behavior.
 - Chromium sandboxing stays enabled by default in production.
 - A runner that loses control-plane reachability beyond the configured grace period must fail closed rather than record indefinitely.
@@ -187,8 +187,6 @@ The following cannot be proven by unit/type/build CI and must be exercised on th
 - Long ffmpeg finalize under the staging machine's actual CPU/disk performance.
 - Real network interruption, process restart and OS signal handling.
 - Memory growth during multi-hour continuous recordings.
-
-The finalize endpoint still performs ffmpeg work while holding the per-meeting PostgreSQL transaction/advisory lock. The recorder timeout is now aligned so this no longer creates a false runner failure at two minutes, but moving ffmpeg fully outside the transaction requires a durable FINALIZING state/lock across uploads and recovery. Treat that as a post-staging architecture improvement unless the long-finalize test exposes unacceptable lock pressure or timeouts.
 
 
 ## Production hardening added in V9
