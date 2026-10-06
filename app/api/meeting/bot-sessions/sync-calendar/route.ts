@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isBotRunnerRequest } from "../_auth";
-import { cleanMeetingTitle, normalizeTeamsMeetingUrl } from "@/lib/meeting/bot/teamsUrl";
+import {
+  cleanMeetingTitle,
+  normalizeTeamsMeetingUrl,
+  teamsMeetingIdentity,
+} from "@/lib/meeting/bot/teamsUrl";
 import {
   botSourceOccurrenceAt,
   rootBotSourceKey,
@@ -141,7 +145,8 @@ export async function POST(req: NextRequest) {
     }
 
     await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-bot:${meetingUrl}`}))`;
+      const meetingIdentity = teamsMeetingIdentity(meetingUrl) ?? meetingUrl;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-bot:${meetingIdentity}`}))`;
 
       const current = await tx.meetingBotSession.findUnique({
         where: { source_sourceKey: { source: "CALENDAR", sourceKey: key } },
@@ -187,9 +192,8 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const conflict = await tx.meetingBotSession.findFirst({
+      const conflictCandidates = await tx.meetingBotSession.findMany({
         where: {
-          meetingUrl,
           status: { not: "FAILED" },
           NOT: {
             source: "CALENDAR",
@@ -201,12 +205,15 @@ export async function POST(req: NextRequest) {
           },
         },
         orderBy: { requestedAt: "asc" },
+        take: 100,
       });
+      const conflict = conflictCandidates.find(
+        (session) => teamsMeetingIdentity(session.meetingUrl) === meetingIdentity,
+      ) ?? null;
       let continuationConflict = null;
       if (!conflict) {
         const continuations = await tx.meetingBotSession.findMany({
           where: {
-            meetingUrl,
             status: { not: "FAILED" },
             scheduledAt: null,
             sourceKey: { contains: ":continuation:" },
@@ -219,6 +226,7 @@ export async function POST(req: NextRequest) {
           take: 50,
         });
         continuationConflict = continuations.find((session) =>
+          teamsMeetingIdentity(session.meetingUrl) === meetingIdentity &&
           sameBotOccurrence(session.sourceKey, scheduledAt),
         ) ?? null;
       }
