@@ -64,9 +64,12 @@ export interface Meeting {
    *  owns it and shared it out, or is themselves the invited viewer. Powers
    *  the small share icon in MeetingAsideRecentItem.tsx. */
   isShared?: boolean;
-  /** True specifically when the caller is a viewer via share (not the
-   *  owner) — lets the sidebar row read "Shared with you" instead of
-   *  "Shared". */
+  /** True while the linked Teams browser bot is actively CAPTURING this
+   *  occurrence. List UIs use this to open the shared live transcript instead
+   *  of sending attendees to the post-recording processing screen. */
+  isLive?: boolean;
+  /** True when the caller has participant/share access rather than being the
+   *  administrative owner — lets the sidebar avoid owner-only actions. */
   sharedWithMe?: boolean;
   /** Sidebar folder this meeting is filed under for the current caller, or
    *  null when ungrouped. For owned meetings this comes from Meeting.groupId;
