@@ -51,9 +51,12 @@ The fallback:
 1. opens Outlook Web Calendar;
 2. finds the current meeting by title;
 3. opens the event;
-4. expands attendee/participant details when available;
-5. reads visible `mailto:` links or email-shaped text;
-6. closes the tab.
+4. verifies that the event exposes the same Teams join URL identity as the active bot session;
+5. expands attendee/participant details when available;
+6. reads visible `mailto:` links or email-shaped text only from the verified event dialog;
+7. closes the tab.
+
+Meeting title alone is never sufficient for authorization because duplicate titles are common.
 
 It is intentionally best-effort and bounded. A redirect to Microsoft login, a missing event, hidden attendee list, or changed layout simply returns no identities.
 
