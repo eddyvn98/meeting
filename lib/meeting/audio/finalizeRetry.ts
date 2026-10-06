@@ -11,9 +11,12 @@
  */
 
 export const FINALIZE_FAILURE_PREFIX = "Finalize failed (your audio is saved, finalize again): ";
+export const CAPTURE_INTERRUPTED_PREFIX = "Capture interrupted (uploaded audio is saved, finalize available audio): ";
 
 export function isRetryableFinalizeFailure(meeting: { status: string; failureReason: string | null }): boolean {
-  return meeting.status === "FAILED" && Boolean(meeting.failureReason?.startsWith(FINALIZE_FAILURE_PREFIX));
+  if (meeting.status !== "FAILED" || !meeting.failureReason) return false;
+  return meeting.failureReason.startsWith(FINALIZE_FAILURE_PREFIX) ||
+    meeting.failureReason.startsWith(CAPTURE_INTERRUPTED_PREFIX);
 }
 
 /** True while the meeting may still receive audio chunks and be finalized. */
