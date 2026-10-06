@@ -204,8 +204,7 @@ export async function POST(req: NextRequest) {
             lte: new Date(scheduledAt.getTime() + 10 * 60_000),
           },
         },
-        orderBy: { requestedAt: "asc" },
-        take: 100,
+        orderBy: { requestedAt: "asc" }
       });
       const conflict = conflictCandidates.find(
         (session) => teamsMeetingIdentity(session.meetingUrl) === meetingIdentity,
@@ -222,8 +221,7 @@ export async function POST(req: NextRequest) {
               sourceKey: { startsWith: eventPrefix },
             },
           },
-          orderBy: { requestedAt: "desc" },
-          take: 50,
+          orderBy: { requestedAt: "desc" }
         });
         continuationConflict = continuations.find((session) =>
           teamsMeetingIdentity(session.meetingUrl) === meetingIdentity &&
