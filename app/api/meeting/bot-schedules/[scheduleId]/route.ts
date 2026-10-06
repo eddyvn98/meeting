@@ -7,6 +7,7 @@ import {
   nextMeetingScheduleAtOrAfter,
 } from "@/lib/meeting/bot/recurrence";
 import { cleanMeetingTitle, normalizeTeamsMeetingUrl } from "@/lib/meeting/bot/teamsUrl";
+import { meetingBotScheduleLockKey } from "@/lib/meeting/bot/scheduleLock";
 
 const ACTIVE_BOT_STATUSES = ["CLAIMED", "JOINING", "LOBBY", "JOINED", "CAPTURING"] as const;
 
@@ -30,10 +31,6 @@ type MutationResult =
   | { kind: "ok"; schedule: Awaited<ReturnType<typeof prisma.meetingBotSchedule.findUniqueOrThrow>> }
   | { kind: "error"; status: number; error: string };
 
-function scheduleLockKey(scheduleId: string): string {
-  return `meeting-bot-schedule:${scheduleId}`;
-}
-
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { scheduleId: string } },
@@ -52,7 +49,7 @@ export async function PATCH(
     // Dispatch, edit and delete share this per-schedule lock. Once a user
     // action succeeds, a waiting dispatcher must re-read the updated schedule
     // and cannot resurrect the superseded occurrence.
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${scheduleLockKey(params.scheduleId)}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${meetingBotScheduleLockKey(params.scheduleId)}))`;
 
     const schedule = await tx.meetingBotSchedule.findUnique({ where: { id: params.scheduleId } });
     if (!schedule || schedule.ownerEmail.toLowerCase() !== email) {
@@ -185,7 +182,7 @@ export async function DELETE(
   if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const result = await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${scheduleLockKey(params.scheduleId)}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${meetingBotScheduleLockKey(params.scheduleId)}))`;
 
     const schedule = await tx.meetingBotSchedule.findUnique({ where: { id: params.scheduleId } });
     if (!schedule || schedule.ownerEmail.toLowerCase() !== email) return false;
