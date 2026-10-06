@@ -47,12 +47,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Calendar discovery requires meetingUrl, ownerEmail, and sourceKey." }, { status: 400 });
   }
 
-  const existing = await prisma.meetingBotSession.findUnique({ where: { source_sourceKey: { source: "CALENDAR", sourceKey } } });
-  if (existing) return NextResponse.json(serializeMeetingBotSession(existing));
-
   const scheduledAt = typeof body.scheduledAt === "string" ? new Date(body.scheduledAt) : null;
-  const session = await prisma.meetingBotSession.create({
-    data: {
+  const session = await prisma.meetingBotSession.upsert({
+    where: { source_sourceKey: { source: "CALENDAR", sourceKey } },
+    update: {},
+    create: {
       ownerEmail,
       meetingUrl,
       title: text(body.title, "Teams Meeting"),
@@ -61,5 +60,9 @@ export async function POST(req: NextRequest) {
       scheduledAt: scheduledAt && !Number.isNaN(scheduledAt.valueOf()) ? scheduledAt : null,
     },
   });
-  return NextResponse.json(serializeMeetingBotSession(session), { status: 201 });
+
+  // Upsert makes repeated/racing discovery calls idempotent. The endpoint is
+  // legacy compatibility; callers do not depend on distinguishing create
+  // from already-existing here.
+  return NextResponse.json(serializeMeetingBotSession(session));
 }
