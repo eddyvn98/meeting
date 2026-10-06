@@ -29,6 +29,9 @@ import { applyMockComplete } from "@/lib/meeting/processing/applyMockComplete";
  * scripts/meeting-bot-runner.mjs), which calls this same endpoint.
  */
 export async function POST(req: NextRequest, { params }: { params: { meetingId: string } }) {
+  if (process.env.MEETING_ALLOW_MOCK_COMPLETE !== "true") {
+    return NextResponse.json({ error: "Mock completion is disabled." }, { status: 404 });
+  }
   const email = await resolveMeetingCallerEmail(req);
   if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
