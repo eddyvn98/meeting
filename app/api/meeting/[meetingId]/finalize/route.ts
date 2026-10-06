@@ -8,15 +8,15 @@ import { mergeAudioChunks, splitReadableChunks } from "@/lib/meeting/audio/merge
 import { finalizeWorkAudioPath, findFullAudio, mergedAudioPath } from "@/lib/meeting/audio/paths";
 import {
   acceptsAudio,
-  finalizeLeaseStartedAt,
+  DEFAULT_FINALIZE_LEASE_MS,
   FINALIZE_FAILURE_PREFIX,
   FINALIZING_PREFIX,
   isFinalizeInProgress,
+  isFinalizeLeaseStale,
   isRetryableFinalizeFailure,
 } from "@/lib/meeting/audio/finalizeRetry";
 import { pruneRawChunksAfterMerge } from "@/lib/meeting/audio/cleanupMeetingAudio";
 
-const DEFAULT_FINALIZE_LEASE_MS = 20 * 60_000;
 
 function finalizeLeaseMs(): number {
   const configured = Number(process.env.MEETING_FINALIZE_LEASE_MS);
@@ -73,10 +73,7 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
       }
 
       if (isFinalizeInProgress(lockedMeeting)) {
-        const startedAt = finalizeLeaseStartedAt(lockedMeeting);
-        const stale =
-          startedAt === null || Date.now() - startedAt >= finalizeLeaseMs();
-        if (!stale) {
+        if (!isFinalizeLeaseStale(lockedMeeting, Date.now(), finalizeLeaseMs())) {
           return { kind: "in-progress" as const, meeting: lockedMeeting };
         }
       } else if (!acceptsAudio(lockedMeeting)) {
