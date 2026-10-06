@@ -9,6 +9,8 @@ import { meetingAudioDir } from "@/lib/meeting/audio/paths";
 
 export const runtime = "nodejs";
 
+class MeetingClosedError extends Error {}
+
 const MAX_FULL_AUDIO_BYTES = 300 * 1024 * 1024;
 
 function extForMimeType(mimeType: string): string {
@@ -55,12 +57,26 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
   await mkdir(dir, { recursive: true });
   const target = join(dir, `full.${extForMimeType(file.type || "")}`);
   const temp = join(dir, `.full.${randomUUID()}.uploading`);
-  try {
-    await writeFile(temp, Buffer.from(await file.arrayBuffer()), { flag: "wx" });
+  await writeFile(temp, Buffer.from(await file.arrayBuffer()), { flag: "wx" });
+  const published = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-audio:${meeting.id}`}))`;
+    const lockedMeeting = await tx.meeting.findUnique({ where: { id: meeting.id } });
+    if (!lockedMeeting || lockedMeeting.ownerEmail.toLowerCase() !== email.toLowerCase()) {
+      throw new Error("Meeting not found");
+    }
+    if (!acceptsAudio(lockedMeeting)) throw new MeetingClosedError();
     await rename(temp, target);
-  } catch (error) {
+    return true;
+  }, { maxWait: 15_000, timeout: 30_000 }).catch(async (error) => {
     await rm(temp, { force: true }).catch(() => undefined);
+    if (error instanceof MeetingClosedError) return false;
     throw error;
+  });
+  if (!published) {
+    return NextResponse.json(
+      { error: "Meeting is no longer accepting audio", code: "MEETING_CLOSED" },
+      { status: 409 },
+    );
   }
   return NextResponse.json({ ok: true, sizeBytes: file.size }, { status: 201 });
 }
