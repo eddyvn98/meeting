@@ -1,9 +1,9 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 
-const roots = ["app", "components", "hooks", "lib", "prisma", "scripts", "services", "stores", "__tests__"];
-const extensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".sql", ".prisma", ".md", ".json", ".css"]);
-const pattern = new RegExp(["\\u0033\\u0036\\u0030\\u0069", "\\u006f\\u006e\\u0067[ -]?\\u006f\\u006e\\u0067", "\\u006f\\u006e\\u0067\\u006f\\u006e\\u0067\\u0064\\u0074", "\\u0072\\u0061\\u006e\\u006b\\u0069\\u006e\\u0065[ -]?\\u0068\\u0069\\u006c\\u006c"].join("|"), "i");
+const roots = ["app", "components", "hooks", "lib", "prisma", "scripts", "services", "stores", "__tests__", "docs", ".github"];
+const extensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".sql", ".prisma", ".md", ".json", ".css", ".yml", ".yaml"]);
+const pattern = new RegExp(["\\u0033\\u0036\\u0030\\u0069", "\\u006f\\u006e\\u0067[ -]?\\u006f\\u006e\\u0067", "\\u006f\\u006e\\u0067\\s*&\\s*\\u006f\\u006e\\u0067", "\\u006f\\u006e\\u0067\\u006f\\u006e\\u0067\\u0064\\u0074", "\\u0072\\u0061\\u006e\\u006b\\u0069\\u006e\\u0065[ -]?\\u0068\\u0069\\u006c\\u006c"].join("|"), "i");
 const hits = [];
 async function walk(path) {
   let entries;

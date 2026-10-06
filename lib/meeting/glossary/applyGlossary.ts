@@ -13,7 +13,7 @@
  *     distance) matching, not phonetic — it catches a close misspelling or
  *     a dropped/added space or symbol, but NOT a phrase STT reconstructed
  *     with a materially different (if similar-sounding) wording, such as an
- *     inserted extra word ("meeting notes" heard as "On and On" won't match: the
+ *     inserted extra word (a multi-word name heard differently won't match: the
  *     inserted "and" alone exceeds the edit-distance budget a 6-letter term
  *     tolerates). That would need phonetic matching (soundex/metaphone),
  *     which this does not attempt.
@@ -46,7 +46,7 @@ function normalize(s: string): string {
 
 interface CompiledTerm {
   term: string;
-  /** Word count when the TERM ITSELF is split by WORD_RE — "meeting notes"
+  /** Word count when the term itself is split by WORD_RE —
    *  becomes 2 ("ONG", "ONG"); "Dify" stays 1. This is the window size a
    *  matching mis-heard run must have in the transcript text. */
   tokenCount: number;

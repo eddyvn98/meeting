@@ -1,7 +1,7 @@
 "use client";
 
 /** Shown only on a meeting this session hasn't cached yet (see
- *  detailCache in page.tsx) — mirrors the real layout (header, audio bar,
+ *  meetingDetailCache.ts) — mirrors the real layout (header, audio bar,
  *  tab content) so the swap to real content doesn't jump around. */
 export function MeetingDetailSkeleton() {
 	return (

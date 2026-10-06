@@ -3,8 +3,7 @@
  *
  * Source-language list for the "before you record" language picker
  * (MeetingHome.tsx) — reuses the same language set as
- * translateLanguages.ts's target-language list (see that file's doc
- * comment for why these 13 cover every meeting notes office plus a few extras),
+ * translateLanguages.ts's target-language list,
  * with English added since Whisper needs an explicit language and this
  * deployment's meetings are as often English as Vietnamese.
  *

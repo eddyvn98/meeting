@@ -7,7 +7,7 @@ import type { Point } from "@/lib/meeting/ui/bubblePosition";
 
 /**
  * Floating, draggable "Ask AI" entry point (replaces the old "Ask" tab —
- * see MeetingResultTabs.tsx). Renders as a circular primary button
+ * see MeetingResultTabs.tsx). Renders as a circular brand-orange button
  * fixed above page content; useDraggableBubble.ts owns the drag/snap/
  * persistence behavior, this component is just presentation + the unread
  * badge.
@@ -54,7 +54,7 @@ export function AskChatBubble({
 				height: bubbleSize.height,
 				touchAction: "none",
 			}}
-			className={`z-40 flex items-center justify-center rounded-full bg-primary text-white shadow-lg outline-none ring-primary/50 transition-[transform,box-shadow] hover:brightness-105 focus-visible:ring-2 motion-reduce:transition-none ${
+			className={`z-40 flex items-center justify-center rounded-full bg-brand-orange text-white shadow-lg outline-none ring-brand-orange/50 transition-[transform,box-shadow] hover:brightness-105 focus-visible:ring-2 motion-reduce:transition-none ${
 				dragging ? "scale-105 cursor-grabbing" : "cursor-grab"
 			} ${open ? "ring-2" : ""}`}
 		>

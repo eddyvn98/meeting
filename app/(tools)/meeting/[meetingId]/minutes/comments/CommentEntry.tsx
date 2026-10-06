@@ -77,11 +77,11 @@ export function CommentEntry({
             rows={2}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            className="w-full resize-none rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground outline-none focus:border-primary"
+            className="w-full resize-none rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground outline-none focus:border-brand-orange"
           />
           <div className="flex justify-end gap-1.5">
             <button type="button" className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted" onClick={() => setEditing(false)}>Cancel</button>
-            <button type="button" className="rounded bg-primary px-2 py-0.5 text-xs font-medium text-white hover:opacity-90" onClick={save}>Save</button>
+            <button type="button" className="rounded bg-brand-orange px-2 py-0.5 text-xs font-medium text-white hover:opacity-90" onClick={save}>Save</button>
           </div>
         </div>
       ) : (

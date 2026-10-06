@@ -37,7 +37,7 @@ function SelectField({
 				aria-label={label}
 				value={value}
 				onChange={(event) => onChange(event.target.value)}
-				className="h-8 cursor-pointer appearance-none rounded-md border border-border bg-background pl-2.5 pr-7 text-xs text-foreground focus:border-primary focus:outline-none"
+				className="h-8 cursor-pointer appearance-none rounded-md border border-border bg-background pl-2.5 pr-7 text-xs text-foreground focus:border-brand-orange focus:outline-none"
 			>
 				{children}
 			</select>

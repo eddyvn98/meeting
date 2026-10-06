@@ -37,7 +37,7 @@ export function CollapsibleSectionBody({ title, children, footer }: { title: str
 				{overflowing && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent" />}
 			</div>
 			{overflowing && (
-				<button type="button" onClick={() => setOpen(true)} className="mt-2 self-start text-xs font-medium text-primary hover:underline">
+				<button type="button" onClick={() => setOpen(true)} className="mt-2 self-start text-xs font-medium text-brand-orange hover:underline">
 					Show more ›
 				</button>
 			)}

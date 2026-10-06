@@ -2,10 +2,8 @@
  * lib/meeting/ai/generateMeetingMindmap.ts
  *
  * Turns a meeting's AI summary (overview/topics/dynamic overview sections)
- * into a mindmap outline via the same CHAT_KEY-backed agent used
- * by generateMeetingInsights (see difyMeetingAgent.ts) — Meeting has no
- * AI backend of its own, so this reuses callChatAgent rather than adding a
- * second Dify wiring. The outline is a plain label tree; the caller (the
+ * into a mindmap outline via the dedicated Meeting workflow. The outline is
+ * a plain label tree; the caller (the
  * mindmap route) turns it into workspace blocks via
  * buildTreeTemplateBlocks (app/workspace/utils/templates/workspaceDiagramTemplates.ts).
  */

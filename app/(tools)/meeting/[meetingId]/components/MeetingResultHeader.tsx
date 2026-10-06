@@ -16,10 +16,8 @@ import type { AskAnswer } from "./MeetingAskAnswerCard";
 
 /**
  * Title + metadata line ("date · duration · N speakers") and a single top-right
- * "…" menu (Minutes, mindmap, Download, Share). The "‹ Back to Meetings" breadcrumb is
- * registered separately via `useToolLayoutSlots({ breadcrumb })` in
- * page.tsx (shared shell slot, per Meeting spec),
- * not rendered here.
+ * "…" menu (Minutes, mindmap, Download, Share). Route navigation stays in the
+ * shared shell, so the header only owns the meeting-specific controls.
  *
  * The title is click-to-edit: PATCH /api/meeting/[meetingId] (rename-only,
  * everything else on a meeting comes from the recording/AI pipeline), then

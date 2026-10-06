@@ -64,7 +64,7 @@ export function MeetingActionItemsCard({ items, title = "Action Items", edit }: 
 
 	return (
 		<div className="group/card flex flex-col rounded-xl border border-border bg-card p-4">
-			<SectionCardHeader icon={<CheckSquare className="h-4 w-4 shrink-0 text-primary" />} title={title} edit={edit} />
+			<SectionCardHeader icon={<CheckSquare className="h-4 w-4 shrink-0 text-brand-orange" />} title={title} edit={edit} />
 
 			<CollapsibleSectionBody
 				title={title}

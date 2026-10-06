@@ -39,7 +39,7 @@ function renderTranslationCell(translationEnabled: boolean, translated?: string)
   if (translated) return <p className="text-foreground">{translated}</p>;
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground/60 italic">
-      <span className="h-1.5 w-1.5 rounded-full bg-primary animate-ping" />
+      <span className="h-1.5 w-1.5 rounded-full bg-brand-orange animate-ping" />
       Translating...
     </span>
   );
@@ -133,9 +133,9 @@ export function LiveTranscriptPanel({
                 type="checkbox"
                 checked={liveTranscriptEnabled}
                 onChange={(e) => onLiveTranscriptEnabledChange(e.target.checked)}
-                className="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary"
+                className="h-3.5 w-3.5 rounded border-border text-brand-orange focus:ring-brand-orange"
               />
-              <Mic className="h-3.5 w-3.5 text-primary" />
+              <Mic className="h-3.5 w-3.5 text-brand-orange" />
               <span>Live Transcript: {liveTranscriptEnabled ? "On" : "Off"}</span>
             </label>
           )}
@@ -147,9 +147,9 @@ export function LiveTranscriptPanel({
                   type="checkbox"
                   checked={translationEnabled}
                   onChange={(e) => onTranslationEnabledChange(e.target.checked)}
-                  className="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary"
+                  className="h-3.5 w-3.5 rounded border-border text-brand-orange focus:ring-brand-orange"
                 />
-                <Languages className="h-3.5 w-3.5 text-primary" />
+                <Languages className="h-3.5 w-3.5 text-brand-orange" />
                 <span>Translate to:</span>
               </label>
               <select
@@ -201,7 +201,7 @@ export function LiveTranscriptPanel({
               onClick={() => onLiveTranscriptEnabledChange(true)}
               className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors shadow-sm"
             >
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              <Sparkles className="h-3.5 w-3.5 text-brand-orange" />
               <span>Turn on Live Transcript</span>
             </button>
           )}
@@ -220,7 +220,7 @@ export function LiveTranscriptPanel({
             </div>
             {translationEnabled && (
               <div className="flex items-center gap-1.5">
-                <Sparkles className="h-3 w-3 text-primary" />
+                <Sparkles className="h-3 w-3 text-brand-orange" />
                 <span>Translation ({targetLanguage})</span>
               </div>
             )}

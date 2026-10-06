@@ -67,7 +67,7 @@ export function MeetingTimelineCard({
 				<ol className="relative ml-1.5 border-l border-border pl-4">
 					{entries.map((entry) => (
 						<li key={entry.id} className="relative pb-4 last:pb-0">
-							<span className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full border-2 border-card bg-primary" />
+							<span className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full border-2 border-card bg-brand-orange" />
 							<p className="text-xs font-bold text-foreground">
 								{formatClock(entry.timeMs)}
 							</p>

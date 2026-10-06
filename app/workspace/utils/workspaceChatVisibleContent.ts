@@ -35,7 +35,12 @@ const BARE_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/
 const BRACKETED_UUID = /\s*\[[^\]]*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[^\]]*\]\s*/gi;
 
 function stripInternalReferences(value: string): string {
-  return value
+  const links: string[] = [];
+  const protectedValue = value.replace(/\]\((<?(?:https?:\/\/|\/(?!\/))[^\s)]+>?)\)/gi, (_match, target: string) => {
+    const index = links.push(target) - 1;
+    return `](__WORKSPACE_LINK_TARGET_${index}__)`;
+  });
+  return protectedValue
     .replace(INTERNAL_BLOCK_LIST_PREFIX, "$1$2")
     .replace(INTERNAL_HTML_LIST_PREFIX, "$1")
     .replace(INTERNAL_ID_LIST, " ")
@@ -47,7 +52,8 @@ function stripInternalReferences(value: string): string {
     .replace(/\bGraph DB\b/gi, "canvas content")
     .replace(/\bexplicit relationship\b/gi, "direct relationship")
     .replace(/\bpath root\b/gi, "path from the root")
-    .replace(/\bVirtual Root\b/g, "the whole canvas");
+    .replace(/\bVirtual Root\b/g, "the whole canvas")
+    .replace(/__WORKSPACE_LINK_TARGET_(\d+)__/g, (match, index: string) => links[Number(index)] ?? match);
 }
 
 /** Removes a model's <think> reasoning, including an unterminated trailing

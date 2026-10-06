@@ -11,7 +11,7 @@ import { meetingAudioDir } from "@/lib/meeting/audio/paths";
 /**
  * Server-side durability backup for the recording pipeline's local
  * (IndexedDB) chunk store — see lib/meeting/recorder/. STT/diarization runs
- * client-side (per the Meeting architecture note), so this route is
+ * client-side, so this route is
  * NOT the pipeline's source of truth for transcription; it only gives the
  * recorder something to ACK against so a chunk can be dropped from the
  * retry queue, and gives ops a durable copy if the browser tab is lost.

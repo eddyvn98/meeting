@@ -6,7 +6,7 @@ import type { AttendanceSectionItem } from "@/lib/meeting/overviewSections";
 import type { AttendanceSuggestion } from "@/lib/meeting/types";
 import { resolveMinutesLabels, type MinutesLabels } from "@/lib/meeting/minutesLabels";
 
-const cellInput = "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-sm outline-none read-only:cursor-default focus:border-primary focus:bg-background print:hidden";
+const cellInput = "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-sm outline-none read-only:cursor-default focus:border-brand-orange focus:bg-background print:hidden";
 
 function generateId(): string {
   return `att_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;

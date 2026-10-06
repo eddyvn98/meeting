@@ -27,7 +27,7 @@ export function ActionTile({
 				disabled={disabled}
 				className="flex flex-col items-center gap-2 px-6 py-8 text-center transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
 			>
-				<span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary-light dark:bg-amber-950/30">
+				<span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-orange-light dark:bg-amber-950/30">
 					{icon}
 				</span>
 				<span className="text-sm font-semibold text-foreground">{title}</span>

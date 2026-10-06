@@ -128,7 +128,7 @@ export function MeetingDownloadMenu({
 										checked={selected.has(opt.key)}
 										onChange={() => toggle(opt.key)}
 										disabled={opt.key === "audio" && !audioUrl}
-										className="mt-0.5 h-3.5 w-3.5 accent-primary"
+										className="mt-0.5 h-3.5 w-3.5 accent-brand-orange"
 									/>
 									<span className={opt.key === "audio" && !audioUrl ? "text-muted-foreground" : ""}>
 										{opt.label}
@@ -146,7 +146,7 @@ export function MeetingDownloadMenu({
 							type="button"
 							onClick={handleDownload}
 							disabled={selected.size === 0}
-							className="mt-3 w-full rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+							className="mt-3 w-full rounded-md bg-brand-orange px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							Download
 						</button>

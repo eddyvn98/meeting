@@ -55,7 +55,7 @@ export function MinutesLanguageBar({
       aria-pressed={active === language}
       disabled={translating !== null}
       className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60 ${
-        active === language ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+        active === language ? "bg-card text-brand-orange shadow-sm" : "text-muted-foreground hover:text-foreground"
       }`}
     >
       {label}

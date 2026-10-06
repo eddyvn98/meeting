@@ -59,7 +59,7 @@ Run the complete Meeting workflow without requiring a Teams custom app or Micros
 3. Optionally choose a repeat rule.
 4. Save.
 5. The Linux runner joins automatically near the scheduled time.
-6. A participant admits `Meeting STT Assistant` from the Teams lobby when required.
+6. A participant admits `ONG STT Assistant` from the Teams lobby when required.
 7. Existing recording, STT, summary, minutes and action-item processing runs normally.
 8. The bot leaves when the call ends or its configured safety timeout is reached.
 
@@ -156,7 +156,7 @@ NEXTAUTH_URL=https://your-meeting-app.example.com
 
 MEETING_BOT_BASE_URL=https://your-meeting-app.example.com
 MEETING_BOT_RUNNER_TOKEN=...
-MEETING_BOT_TEAMS_DISPLAY_NAME=Meeting STT Assistant
+MEETING_BOT_TEAMS_DISPLAY_NAME=ONG STT Assistant
 MEETING_BOT_TEAMS_AUTH_MODE=authenticated
 MEETING_BOT_TEAMS_AUTH_STATE=.meeting-bot/teams-auth.json
 MEETING_BOT_SCHEDULE_POLL_MS=15000
@@ -205,7 +205,7 @@ For initial troubleshooting, `MEETING_BOT_HEADLESS=false` makes it easier to ins
 6. Choose **Never** and save a meeting a few minutes in the future.
 7. Confirm the schedule appears with **Auto join ON**.
 8. Near the start time, confirm it appears under Bot activity as Joining/Waiting.
-9. Admit `Meeting STT Assistant` from the lobby if Teams requires it.
+9. Admit `ONG STT Assistant` from the lobby if Teams requires it.
 10. Speak for at least 30-60 seconds.
 11. End the Teams meeting.
 12. Confirm the bot session finishes and the generated Meeting reaches its normal processed result.

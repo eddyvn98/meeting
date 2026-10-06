@@ -24,7 +24,7 @@ const MONTHS: Record<string, number> = {
 const NOISE = [
   /microsoft teams/i,
   /join (the )?meeting/i,
-  /tham gia (cuộc )?họp/i,
+  /tham gia (cuộc )?họp/i, // vi-allow
   /meeting id/i,
   /passcode/i,
   /need help/i,

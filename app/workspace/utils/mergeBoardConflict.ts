@@ -15,8 +15,17 @@ export interface BoardContent {
   connectors: Record<string, unknown>;
 }
 
+/** One entity both sides changed; `mine` is the local value that was not kept. */
+export interface MergeConflictItem {
+  kind: "block" | "connector";
+  id: string;
+  mine: unknown;
+  theirs: unknown;
+}
+
 export interface MergedBoardContent extends BoardContent {
   conflicts: number;
+  items: MergeConflictItem[];
 }
 
 // Key order is not stable across a Postgres JSONB round trip.
@@ -30,8 +39,9 @@ function mergeEntities(
   base: Record<string, unknown>,
   mine: Record<string, unknown>,
   theirs: Record<string, unknown>,
-): { merged: Record<string, unknown>; conflicts: number } {
+): { merged: Record<string, unknown>; conflicts: number; lost: Array<{ id: string; mine: unknown; theirs: unknown }> } {
   const merged: Record<string, unknown> = {};
+  const lost: Array<{ id: string; mine: unknown; theirs: unknown }> = [];
   let conflicts = 0;
   for (const key of new Set([...Object.keys(base), ...Object.keys(mine), ...Object.keys(theirs)])) {
     const mineChanged = !same(mine[key], base[key]);
@@ -41,11 +51,14 @@ function mergeEntities(
     else if (!mineChanged) value = theirs[key];
     else {
       value = theirs[key];
-      if (!same(mine[key], theirs[key])) conflicts += 1;
+      if (!same(mine[key], theirs[key])) {
+        conflicts += 1;
+        lost.push({ id: key, mine: mine[key], theirs: theirs[key] });
+      }
     }
     if (value !== undefined) merged[key] = value;
   }
-  return { merged, conflicts };
+  return { merged, conflicts, lost };
 }
 
 export function mergeBoardContent(base: BoardContent, mine: BoardContent, theirs: BoardContent): MergedBoardContent {
@@ -65,5 +78,9 @@ export function mergeBoardContent(base: BoardContent, mine: BoardContent, theirs
     blockOrder: order,
     connectors: connectors.merged,
     conflicts: blocks.conflicts + connectors.conflicts,
+    items: [
+      ...blocks.lost.map((item) => ({ kind: "block" as const, ...item })),
+      ...connectors.lost.map((item) => ({ kind: "connector" as const, ...item })),
+    ],
   };
 }

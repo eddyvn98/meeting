@@ -36,6 +36,7 @@ async function requestJson(url: string, method: string, body?: unknown): Promise
  */
 export function useOverviewSectionsEditor(meetingId: string, summary: MeetingSummary | null, setSummary: SetSummary) {
   const [savingSectionId, setSavingSectionId] = useState<string | null>(null);
+  const [reorderingSections, setReorderingSections] = useState(false);
   const [savingOverview, setSavingOverview] = useState(false);
   const [generatingSummary, setGeneratingSummary] = useState(false);
   const [generatingTimeline, setGeneratingTimeline] = useState(false);
@@ -197,6 +198,34 @@ export function useOverviewSectionsEditor(meetingId: string, summary: MeetingSum
     );
   };
 
+  const reorderSections = async (visibleIds: string[]) => {
+    if (!summary || reorderingSections) return;
+    const ordered = [...summary.sections].sort((a, b) => a.order - b.order);
+    const visible = ordered.filter((section) => isOverviewVisibleKind(section.kind));
+    const visibleIdSet = new Set(visible.map((section) => section.id));
+    if (visibleIds.length !== visible.length || visibleIds.some((id) => !visibleIdSet.has(id))) return;
+    if (visible.every((section, index) => section.id === visibleIds[index])) return;
+
+    const visibleById = new Map(visible.map((section) => [section.id, section] as const));
+    let visibleIndex = 0;
+    const next = ordered.map((section) =>
+      isOverviewVisibleKind(section.kind) ? visibleById.get(visibleIds[visibleIndex++])! : section,
+    );
+    const ids = next.map((section) => section.id);
+    setReorderingSections(true);
+    try {
+      await withRollback(
+        (prev) => ({ ...prev, sections: next.map((section, index) => ({ ...section, order: index })) }),
+        async () => {
+          await requestJson(`/api/meeting/${meetingId}/sections/reorder`, "PATCH", { ids });
+        },
+        "Could not reorder sections",
+      );
+    } finally {
+      setReorderingSections(false);
+    }
+  };
+
   /** "Generate with AI" for one section: the server ADDS new items next to the
    *  existing ones (never overwrites), so there is nothing to confirm. */
   const generateSection = async (sectionId: string) => {
@@ -245,6 +274,7 @@ export function useOverviewSectionsEditor(meetingId: string, summary: MeetingSum
 
   return {
     savingSectionId,
+    reorderingSections,
     savingOverview,
     generatingSummary,
     generatingTimeline,
@@ -257,6 +287,7 @@ export function useOverviewSectionsEditor(meetingId: string, summary: MeetingSum
     renameSection,
     deleteSection,
     moveSection,
+    reorderSections,
     saveItems,
   };
 }

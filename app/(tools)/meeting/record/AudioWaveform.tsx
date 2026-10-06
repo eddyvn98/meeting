@@ -14,7 +14,7 @@ const HISTORY_INTERVAL_MS = 90;
 // Each bar still eases toward its latest sample instead of snapping, so a
 // new history entry grows in smoothly rather than popping in.
 const EASE_FACTOR = 0.3;
-// Matches tailwind.config.js's "primary" (#d97706) — the same accent
+// Matches tailwind.config.js's "brand-orange" (#d97706) — the same accent
 // MeetingAudioPlayer uses for its play button and scrub bar, since canvas
 // fillStyle can't read Tailwind classes directly.
 const BAR_COLOR = "#d97706";

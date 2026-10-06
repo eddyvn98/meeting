@@ -1,9 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
 import ProtectedRoute from "@/components/features/auth/protected-route";
 import { useToolLayoutSlots } from "@/hooks/use-tool-layout-slots";
 import { emitMeetingRenamed, onMeetingRenamed } from "@/lib/meeting/meetingEvents";
@@ -29,31 +27,13 @@ import { AskChatPanel } from "./components/AskChatPanel";
 import type { AskAnswer } from "./components/MeetingAskAnswerCard";
 import { MeetingAudioPlayer } from "./components/MeetingAudioPlayer";
 import { MeetingAudioSeekProvider } from "./components/MeetingAudioSeekContext";
-import { toast } from "sonner";
 import { useMeetingTranslation } from "./useMeetingTranslation";
 import { useLiveMeetingTranscript } from "./useLiveMeetingTranscript";
 import { useAskChatState } from "./useAskChatState";
+import { meetingDetailCache } from "./meetingDetailCache";
+import { useMeetingSegmentEditor } from "./useMeetingSegmentEditor";
 
 const VALID_TABS: MeetingResultTab[] = ["overview", "transcript"];
-
-// In-memory, per-tab-session cache so re-visiting a meeting you've already
-// opened (switching back and forth in the sidebar) shows it instantly
-// instead of blanking to a loading state and re-fetching every time. Module
-// scope, not state — it must survive this page component unmounting when
-// you navigate away to another meeting or back to the list.
-const detailCache = new Map<string, MeetingDetail>();
-
-function MeetingBreadcrumb() {
-	return (
-		<Link
-			href="/meeting"
-			className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-		>
-			<ChevronLeft className="h-4 w-4" />
-			Back to Meetings
-		</Link>
-	);
-}
 
 /**
  * Meeting Result screen: tab shell (Overview / Transcript) + sticky audio
@@ -83,7 +63,7 @@ export default function MeetingResultPage() {
 		setDetail((previous) => {
 			if (!previous || previous.transcriptSegments.some((item) => item.id === segment.id)) return previous;
 			const next = { ...previous, transcriptSegments: [...previous.transcriptSegments, segment].sort((a, b) => a.order - b.order) };
-			detailCache.set(meetingId, next);
+			meetingDetailCache.set(meetingId, next);
 			return next;
 		});
 	}, [meetingId]);
@@ -91,42 +71,18 @@ export default function MeetingResultPage() {
 		if (nextStatus !== "READY" && nextStatus !== "FAILED") return;
 		void fetch(`/api/meeting/${meetingId}`, { cache: "no-store" })
 			.then((response) => response.ok ? response.json() as Promise<MeetingDetail> : null)
-			.then((next) => { if (next) { detailCache.set(meetingId, next); setDetail(next); } })
+			.then((next) => { if (next) { meetingDetailCache.set(meetingId, next); setDetail(next); } })
 			.catch(() => undefined);
 	}, [meetingId]);
 	useLiveMeetingTranscript(meetingId, detail?.status, onLiveSegment, refreshLiveMeeting);
 
 	const translation = useMeetingTranslation(meetingId, detail?.transcriptSegments ?? [], detail?.summary ?? null);
-	const editSegment = useCallback(
-		async (segmentId: string, text: string) => {
-			const previous = detail?.transcriptSegments.find((segment) => segment.id === segmentId);
-			if (!previous || !text.trim() || text === previous.textEn) return;
-			const apply = (textEn: string | null, textVi: string | null) =>
-				setDetail((current) => {
-					if (!current) return current;
-					const next = {
-						...current,
-						transcriptSegments: current.transcriptSegments.map((segment) => (segment.id === segmentId ? { ...segment, textEn, textVi } : segment)),
-					};
-					detailCache.set(meetingId, next);
-					return next;
-				});
-			apply(text, null);
-			translation.dropSegmentTranslation(segmentId);
-			try {
-				const res = await fetch(`/api/meeting/${meetingId}/segments/${segmentId}`, {
-					method: "PATCH",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ text }),
-				});
-				if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? `Request failed (${res.status})`);
-			} catch (err) {
-				apply(previous.textEn, previous.textVi);
-				toast.error(err instanceof Error ? err.message : "Could not save the change");
-			}
-		},
-		[detail, meetingId, translation],
-	);
+	const editSegment = useMeetingSegmentEditor({
+		meetingId,
+		detail,
+		setDetail,
+		dropSegmentTranslation: translation.dropSegmentTranslation,
+	});
 	const retentionDays = useAudioRetentionDays();
 	const audioExpiry = detail && retentionDays !== null ? computeAudioExpiry(detail, retentionDays) : null;
 
@@ -137,7 +93,7 @@ export default function MeetingResultPage() {
 		// Show a cached copy immediately if we have one — otherwise fall back
 		// to the skeleton. Either way, a fresh fetch still runs below so a
 		// cached view gets silently revalidated rather than going stale.
-		setDetail(detailCache.get(meetingId) ?? null);
+		setDetail(meetingDetailCache.get(meetingId) ?? null);
 
 		fetch(`/api/meeting/${meetingId}`)
 			.then(async (res) => {
@@ -146,7 +102,7 @@ export default function MeetingResultPage() {
 			})
 			.then((data) => {
 				if (cancelled) return;
-				detailCache.set(meetingId, data);
+				meetingDetailCache.set(meetingId, data);
 				setDetail(data);
 				// Always emit (not just when it differs from a previous cache
 				// entry — there IS no previous entry on this meeting's very
@@ -161,7 +117,7 @@ export default function MeetingResultPage() {
 				if (cancelled) return;
 				// A stale cached view is still more useful than an error screen —
 				// only surface the error if we have nothing at all to show.
-				if (!detailCache.has(meetingId)) {
+				if (!meetingDetailCache.has(meetingId)) {
 					setError(err instanceof Error ? err.message : "Failed to load meeting");
 				}
 			});
@@ -180,7 +136,7 @@ export default function MeetingResultPage() {
 			setDetail((prev) => {
 				if (!prev) return prev;
 				const next = { ...prev, title };
-				detailCache.set(id, next);
+				meetingDetailCache.set(id, next);
 				return next;
 			});
 		});
@@ -201,7 +157,7 @@ export default function MeetingResultPage() {
 				.then((res) => (res.ok ? (res.json() as Promise<MeetingDetail>) : null))
 				.then((data) => {
 					if (cancelled || !data?.summary) return;
-					detailCache.set(meetingId, data);
+					meetingDetailCache.set(meetingId, data);
 					setDetail(data);
 					// Same reasoning as the initial fetch above — this poll is
 					// exactly what catches an auto-title landing while you're
@@ -230,7 +186,6 @@ export default function MeetingResultPage() {
 	useToolLayoutSlots({
 		showHistory: false,
 		aside: <MeetingAside />,
-		breadcrumb: <MeetingBreadcrumb />,
 	});
 
 	return (
@@ -263,7 +218,7 @@ export default function MeetingResultPage() {
 								setDetail((prev) => {
 									if (!prev) return prev;
 									const next = { ...prev, title };
-									detailCache.set(meetingId, next);
+									meetingDetailCache.set(meetingId, next);
 									return next;
 								})
 							}
@@ -282,7 +237,7 @@ export default function MeetingResultPage() {
 								/>
 							}
 						/>
-						<MeetingAudioPlayer audioUrl={detail.audioUrl} audioExpiry={audioExpiry} />
+						<MeetingAudioPlayer audioUrl={detail.audioUrl} meetingTitle={detail.title} audioExpiry={audioExpiry} />
 						{detail.isMockResult && <MeetingMockResultBanner meetingId={meetingId} />}
 						<MeetingAudioExpiryBanner meeting={detail} />
 						<div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
@@ -301,7 +256,7 @@ export default function MeetingResultPage() {
 										setDetail((prev) => {
 											if (!prev || !prev.summary) return prev;
 											const next = { ...prev, summary: updater(prev.summary) };
-											detailCache.set(meetingId, next);
+											meetingDetailCache.set(meetingId, next);
 											return next;
 										})
 									}

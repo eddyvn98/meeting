@@ -165,7 +165,7 @@ export function MeetingSchedulePanel() {
             onChange={(event) => applyPaste(event.target.value)}
             placeholder={"Paste a Teams link, or paste the whole Outlook/Teams invitation..."}
             rows={3}
-            className="resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+            className="resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-brand-orange"
           />
         </label>
 
@@ -177,7 +177,7 @@ export function MeetingSchedulePanel() {
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Teams Meeting"
               maxLength={180}
-              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-brand-orange"
             />
           </label>
           <label className="grid gap-1 text-xs text-muted-foreground">
@@ -187,7 +187,7 @@ export function MeetingSchedulePanel() {
               min={minStart}
               onChange={(event) => setStartLocal(event.target.value)}
               type="datetime-local"
-              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-brand-orange"
             />
           </label>
         </div>
@@ -198,7 +198,7 @@ export function MeetingSchedulePanel() {
             <select
               value={repeat}
               onChange={(event) => setRepeat(event.target.value as MeetingScheduleRepeat)}
-              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-brand-orange"
             >
               {REPEAT_OPTIONS.map((item) => (
                 <option key={item.value} value={item.value}>{item.label}</option>

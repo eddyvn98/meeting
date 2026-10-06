@@ -54,7 +54,7 @@ export function MeetingTranslationToggle({
 				className={cn(
 					"rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
 					mode === "en"
-						? "bg-card font-semibold text-primary shadow-sm"
+						? "bg-card font-semibold text-brand-orange shadow-sm"
 						: "text-muted-foreground hover:text-foreground"
 				)}
 				aria-pressed={mode === "en"}
@@ -67,7 +67,7 @@ export function MeetingTranslationToggle({
 				className={cn(
 					"inline-flex items-center rounded-md transition-colors",
 					mode === "vi"
-						? "bg-card font-semibold text-primary shadow-sm"
+						? "bg-card font-semibold text-brand-orange shadow-sm"
 						: "text-muted-foreground hover:text-foreground"
 				)}
 			>
@@ -112,12 +112,12 @@ export function MeetingTranslationToggle({
 								}}
 								className={cn(
 									"flex cursor-pointer items-center justify-between text-xs",
-									lang.code === targetLang && "font-semibold text-primary"
+									lang.code === targetLang && "font-semibold text-brand-orange"
 								)}
 							>
 								<span>{lang.label}</span>
 								{lang.code === targetLang && (
-									<Check className="h-3.5 w-3.5 text-primary" />
+									<Check className="h-3.5 w-3.5 text-brand-orange" />
 								)}
 							</DropdownMenuItem>
 						))}
@@ -129,7 +129,7 @@ export function MeetingTranslationToggle({
 			<label
 				className={cn(
 					"ml-1 inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-					mode === "bilingual" ? "text-primary" : "text-muted-foreground hover:text-foreground",
+					mode === "bilingual" ? "text-brand-orange" : "text-muted-foreground hover:text-foreground",
 					disabled && "cursor-not-allowed opacity-50"
 				)}
 			>
@@ -138,7 +138,7 @@ export function MeetingTranslationToggle({
 					disabled={disabled}
 					checked={mode === "bilingual"}
 					onChange={(event) => onChange(event.target.checked ? "bilingual" : "vi")}
-					className="h-3.5 w-3.5 accent-primary"
+					className="h-3.5 w-3.5 accent-brand-orange"
 				/>
 				Bilingual
 			</label>

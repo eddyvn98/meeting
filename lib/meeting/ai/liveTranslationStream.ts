@@ -1,7 +1,7 @@
 import { callWorkflowAppStreaming } from "./difyClient";
 import {
   getMeetingProcessingConfig,
-  getProcessingModelPolicy,
+  isMeetingTranslationFallbackEnabled,
 } from "./processingWorkflow";
 import { parseTranslations } from "./meetingTranslationParser";
 
@@ -36,16 +36,8 @@ function translationConfig(): { key: string; url: string } | null {
   return getMeetingProcessingConfig(TRANSLATION_LEGACY_KEYS, TRANSLATION_LEGACY_URLS);
 }
 
-function modelInputs(inputs: Record<string, unknown>, model?: string): Record<string, unknown> {
-  return model ? { ...inputs, model_selector: model } : inputs;
-}
-
-function modelLabel(model: string | undefined, role: "primary" | "fallback"): string {
-  return model || `processing-${role}`;
-}
-
 async function runBatchModel(
-  model: string | undefined,
+  task: "translate_batch" | "translate_batch_fallback",
   items: LiveBatchTranslationItem[],
   targetLanguage: string,
   user: string,
@@ -53,11 +45,11 @@ async function runBatchModel(
   signal?: AbortSignal,
 ) {
   return callWorkflowAppStreaming(
-    modelInputs({
-      task: "translate_batch",
+    {
+      task,
       text: items.map((item, index) => `[${index}] ${item.text.trim()}`).join("\n"),
       target_language: targetLanguage,
-    }, model),
+    },
     user,
     config.key,
     config.url,
@@ -81,42 +73,38 @@ export async function streamLiveTranslationBatch(
   if (!config) return null;
 
   const startedAt = Date.now();
-  const { primaryModel, fallbackModel } = getProcessingModelPolicy("translation");
   const primarySignal = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(8_000)])
     : AbortSignal.timeout(8_000);
-  const primary = await runBatchModel(primaryModel, items, targetLanguage, user, config, primarySignal);
+  const primary = await runBatchModel("translate_batch", items, targetLanguage, user, config, primarySignal);
   let parsed = primary.completed && primary.text ? parseTranslations(primary.text, items.length) : null;
   if (parsed) {
     return {
       translations: parsed.flatMap((text, index) => text ? [{ index: items[index].index, text }] : []),
-      provider: modelLabel(primaryModel, "primary"),
+      provider: "qwen3.6-flash",
       elapsedMs: Date.now() - startedAt,
       attempts: 1,
     };
   }
 
-  if (signal?.aborted || !fallbackModel || fallbackModel === primaryModel) return null;
+  if (signal?.aborted || !isMeetingTranslationFallbackEnabled()) return null;
 
   const fallbackSignal = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(10_000)])
     : AbortSignal.timeout(10_000);
-  const fallback = await runBatchModel(fallbackModel, items, targetLanguage, user, config, fallbackSignal);
+  const fallback = await runBatchModel("translate_batch_fallback", items, targetLanguage, user, config, fallbackSignal);
   parsed = fallback.completed && fallback.text ? parseTranslations(fallback.text, items.length) : null;
   if (!parsed) return null;
 
   return {
     translations: parsed.flatMap((text, index) => text ? [{ index: items[index].index, text }] : []),
-    provider: modelLabel(fallbackModel, "fallback"),
+    provider: "deepseek-v4-flash",
     elapsedMs: Date.now() - startedAt,
     attempts: 2,
   };
 }
 
-/**
- * Primary and fallback models use the same Dify processing app. Configure the
- * fallback as a different model family to reduce correlated failures.
- */
+/** Primary and fallback models use separate task routes in the same Dify app. */
 export async function streamLiveTranslation(
   text: string,
   targetLanguage: string,
@@ -126,8 +114,7 @@ export async function streamLiveTranslation(
   signal?: AbortSignal,
 ): Promise<LiveStreamResult | null> {
   const trimmed = text.trim();
-  const { primaryModel, fallbackModel } = getProcessingModelPolicy("translation");
-  const primaryLabel = modelLabel(primaryModel, "primary");
+  const primaryLabel = "qwen3.6-flash";
   if (!trimmed) return { text: "", provider: primaryLabel, elapsedMs: 0, attempts: 0 };
 
   const user = callerEmail || process.env.NEXT_PUBLIC_DEV_USER_EMAIL || DEFAULT_CALLER_EMAIL;
@@ -139,7 +126,7 @@ export async function streamLiveTranslation(
     ? AbortSignal.any([signal, AbortSignal.timeout(PRIMARY_TIMEOUT_MS)])
     : AbortSignal.timeout(PRIMARY_TIMEOUT_MS);
   const primary = await callWorkflowAppStreaming(
-    modelInputs({ task: "translate", text: trimmed, target_language: targetLanguage }, primaryModel),
+    { task: "translate", text: trimmed, target_language: targetLanguage },
     user,
     config.key,
     config.url,
@@ -156,15 +143,15 @@ export async function streamLiveTranslation(
     };
   }
 
-  if (signal?.aborted || !fallbackModel || fallbackModel === primaryModel) return null;
+  if (signal?.aborted || !isMeetingTranslationFallbackEnabled()) return null;
 
-  const fallbackLabel = modelLabel(fallbackModel, "fallback");
+  const fallbackLabel = "qwen-mt-turbo";
   onFallback(fallbackLabel);
   const fallbackSignal = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(FALLBACK_TIMEOUT_MS)])
     : AbortSignal.timeout(FALLBACK_TIMEOUT_MS);
   const fallback = await callWorkflowAppStreaming(
-    modelInputs({ task: "translate", text: trimmed, target_language: targetLanguage }, fallbackModel),
+    { task: "translate_turbo", text: trimmed, target_language: targetLanguage },
     user,
     config.key,
     config.url,

@@ -42,7 +42,7 @@ const POLL_INTERVAL_MS = 3000;
 const COMPLETE_TRANSITION_MS = 900;
 
 /**
- * "Uploading & Processing" screen (
+ * "Uploading & Processing" screen,
  * "UI Reference" -> "Uploading & Processing" + section 8). Polls
  * GET /api/meeting/[meetingId] for `status` and drives the stepper from it
  * (see processingSteps.ts for the status -> step-state mapping and its
@@ -258,7 +258,7 @@ export default function MeetingProcessingPage() {
             </div>
             <div className="mb-5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-primary transition-[width] duration-300"
+                className="h-full rounded-full bg-brand-orange transition-[width] duration-300"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
@@ -282,7 +282,7 @@ export default function MeetingProcessingPage() {
           </div>
         )}
 
-        <Link href="/meeting" className="text-sm font-medium text-primary hover:underline">
+        <Link href="/meeting" className="text-sm font-medium text-brand-orange hover:underline">
           View recent meetings
         </Link>
       </div>

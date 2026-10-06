@@ -74,7 +74,7 @@ export function MeetingPublicLinkSection({ meetingId }: { meetingId: string }) {
 					aria-label="Public link"
 					disabled={busy || state === null}
 					onClick={() => (link ? change("DELETE") : change("POST"))}
-					className={`relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${link ? "bg-primary" : "bg-muted-foreground/40"}`}
+					className={`relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${link ? "bg-brand-orange" : "bg-muted-foreground/40"}`}
 				>
 					{busy ? (
 						<Loader2 className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 animate-spin text-white" />

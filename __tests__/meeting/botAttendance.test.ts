@@ -6,10 +6,10 @@ describe("roster attendance defaults", () => {
     expect(
       buildRosterAttendanceDefaults(
         ["John Smith", "Mary Tran", "john smith"],
-        [{ name: "John Smith", role: "Lead", organization: "Ong&Ong" }],
+        [{ name: "John Smith", role: "Lead", organization: "Acme" }],
       ),
     ).toEqual([
-      expect.objectContaining({ name: "John Smith", role: "Lead", organization: "Ong&Ong", status: "present" }),
+      expect.objectContaining({ name: "John Smith", role: "Lead", organization: "Acme", status: "present" }),
       expect.objectContaining({ name: "Mary Tran", role: null, organization: null, status: "present" }),
     ]);
   });

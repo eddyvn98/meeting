@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Pause, Play, Volume2, VolumeX } from "lucide-react";
+import { Download, Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { formatClock } from "@/lib/meeting/format";
 import type { AudioExpiryInfo } from "@/lib/meeting/audioRetention";
 import { useMeetingAudioSeek } from "./MeetingAudioSeekContext";
@@ -37,7 +37,7 @@ function loadStoredSpeed(): number {
  * or other visual surface here for "fullscreen" to mean anything; it was a
  * dead icon that never did anything.
  */
-export function MeetingAudioPlayer({ audioUrl, audioExpiry = null }: { audioUrl: string | null; audioExpiry?: AudioExpiryInfo | null }) {
+export function MeetingAudioPlayer({ audioUrl, meetingTitle, audioExpiry = null }: { audioUrl: string | null; meetingTitle: string; audioExpiry?: AudioExpiryInfo | null }) {
 	const audioRef = useRef<HTMLAudioElement | null>(null);
 	const [isPlaying, setIsPlaying] = useState(false);
 	const [currentMs, setCurrentMs] = useState(0);
@@ -156,6 +156,7 @@ export function MeetingAudioPlayer({ audioUrl, audioExpiry = null }: { audioUrl:
 		reportCurrentMs(nextMs);
 		if (audio) audio.currentTime = nextMs / 1000;
 	};
+	const safeTitle = meetingTitle.replace(/[\\/:*?"<>|]+/g, "_").trim() || "meeting";
 
 	return (
 		<div className="border-y border-border bg-card px-4 py-3 sm:px-6">
@@ -167,7 +168,7 @@ export function MeetingAudioPlayer({ audioUrl, audioExpiry = null }: { audioUrl:
 					onClick={togglePlay}
 					disabled={!audioUrl}
 					aria-label={isPlaying ? "Pause" : "Play"}
-					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-white disabled:cursor-not-allowed disabled:opacity-50"
+					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-orange text-white disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{isPlaying ? (
 						<Pause className="h-4 w-4" />
@@ -187,7 +188,7 @@ export function MeetingAudioPlayer({ audioUrl, audioExpiry = null }: { audioUrl:
 					value={currentMs}
 					onChange={onScrub}
 					disabled={!audioUrl}
-					className="h-1.5 flex-1 cursor-pointer rounded-full bg-muted accent-primary disabled:cursor-not-allowed"
+					className="h-1.5 flex-1 cursor-pointer rounded-full bg-muted accent-brand-orange disabled:cursor-not-allowed"
 					aria-label="Seek"
 				/>
 
@@ -221,6 +222,18 @@ export function MeetingAudioPlayer({ audioUrl, audioExpiry = null }: { audioUrl:
 						</option>
 					))}
 				</select>
+
+				{audioUrl && !audioExpiry?.isExpired && (
+					<a
+						href={audioUrl}
+						download={`${safeTitle}-audio`}
+						aria-label="Download recording"
+						title="Download recording"
+						className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+					>
+						<Download className="h-4 w-4" />
+					</a>
+				)}
 			</div>
 
 			{audioUrl && audioExpiry && <AudioExpiryNote expiry={audioExpiry} className="mt-2" />}

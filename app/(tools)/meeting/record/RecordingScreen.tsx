@@ -129,7 +129,7 @@ export function RecordingScreen({ title }: { title: string }) {
               startedRef.current = true;
               void recorder.start(title, isMobile ? "microphone" : "display");
             }}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
+            className="rounded-md bg-brand-orange px-4 py-2 text-sm font-medium text-white hover:bg-brand-orange/90"
           >
             Start Recording
           </button>
@@ -152,14 +152,14 @@ export function RecordingScreen({ title }: { title: string }) {
           {recorder.error ? ERROR_COPY[recorder.error.reason] ?? recorder.error.message : ERROR_COPY.unknown}
         </p>
         {recorder.error && SAFARI_HINT_REASONS.has(recorder.error.reason) && isSafari() && (
-          <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+          <span className="rounded-full bg-brand-orange/10 px-3 py-1 text-xs font-medium text-brand-orange">
             Tip: recording works best in Chrome — try switching browsers
           </span>
         )}
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
+          className="rounded-md bg-brand-orange px-4 py-2 text-sm font-medium text-white hover:bg-brand-orange/90"
         >
           Try again
         </button>

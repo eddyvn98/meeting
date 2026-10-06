@@ -119,7 +119,7 @@ export function MeetingGroupAskPanel({
 					onClick={submit}
 					disabled={!question.trim() || pending}
 					aria-label="Ask"
-					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-white disabled:cursor-not-allowed disabled:opacity-50"
+					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-orange text-white disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					<Send className="h-4 w-4" />
 				</button>

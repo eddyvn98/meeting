@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState, type ReactNode } from "react";
 import type { OverviewSection, MeetingSummary, TranscriptSegment } from "@/lib/meeting/types";
 import {
 	defaultTitleFor,
@@ -26,6 +27,7 @@ import type { SectionEdit } from "./SectionCardHeader";
 import { MeetingAddSectionMenu } from "./MeetingAddSectionMenu";
 import { MeetingQuotesCard, MeetingTextListCard } from "./MeetingGenericSectionCards";
 import { MeetingMetricsCard, MeetingOptionsCompareCard, MeetingQaCard } from "./MeetingStructuredSectionCards";
+import { OverviewSectionDragHandle } from "./OverviewSectionDragHandle";
 
 /** Renders one dynamic overview section by kind. Every kind in
  *  lib/meeting/overviewSections.ts's OVERVIEW_SECTION_KINDS must have an
@@ -122,6 +124,15 @@ function renderSection(section: OverviewSection, makeEdit?: <T>() => SectionEdit
 	}
 }
 
+function moveVisibleSection(ids: string[], movingId: string, targetId: string, after: boolean) {
+	if (movingId === targetId) return ids;
+	const next = ids.filter((id) => id !== movingId);
+	const targetIndex = next.indexOf(targetId);
+	if (targetIndex === -1) return ids;
+	next.splice(targetIndex + (after ? 1 : 0), 0, movingId);
+	return next;
+}
+
 /**
  * Overview tab body: Summary card, then the meeting's dynamic sections in a
  * responsive grid (1 column on mobile, up to 3 on wide screens — the count
@@ -166,6 +177,8 @@ export function MeetingOverviewTab({
 	const canManage = accessRole === "owner" || accessRole === "editor";
 	const canEdit = canManage && !editingDisabled;
 	const editor = useOverviewSectionsEditor(meetingId, sourceSummary ?? summary, onSummaryChange);
+	const [draggingSectionId, setDraggingSectionId] = useState<string | null>(null);
+	const [dropTarget, setDropTarget] = useState<{ id: string; after: boolean } | null>(null);
 
 	if (!summary) return <MeetingOverviewGenerating />;
 
@@ -183,46 +196,89 @@ export function MeetingOverviewTab({
 					onRegenerate={canEdit ? () => void editor.regenerateSummary() : undefined}
 					regenerating={canEdit && editor.generatingSummary}
 				/>
-				{hasMinutes && (
+				{(canManage || hasMinutes) && (
 					<Link
 						href={`/meeting/${meetingId}/minutes`}
 						target="_blank"
 						rel="noopener noreferrer"
 						className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-4 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
 					>
-						<span>Minutes of Meeting available</span>
-						<span className="font-medium">Open ›</span>
+						<span>{hasMinutes ? "Minutes of Meeting available" : "Create Minutes of Meeting"}</span>
+						<span className="font-medium">{hasMinutes ? "Open ›" : "Create ›"}</span>
 					</Link>
 				)}
 				{sections.length > 0 && (
 					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
 						{sections.map((section, index) => {
-							const menu = (
-								<SectionMenu
-									canMoveUp={index > 0}
-									canMoveDown={index < sections.length - 1}
-									disabled={editor.savingSectionId === section.id}
-									onMove={(direction) => void editor.moveSection(section.id, direction)}
-									onDelete={() => void editor.deleteSection(section.id)}
-									onGenerate={isGeneratableKind(section.kind) ? () => void editor.generateSection(section.id) : undefined}
-									generating={editor.generatingSectionId === section.id}
+							const dragHandle = canManage && (
+								<OverviewSectionDragHandle
+									label={section.title || defaultTitleFor(section.kind)}
+									disabled={editor.reorderingSections || Boolean(editor.savingSectionId)}
+									onDragStart={(event) => {
+										event.dataTransfer.effectAllowed = "move";
+										event.dataTransfer.setData("text/plain", section.id);
+										setDraggingSectionId(section.id);
+									}}
+									onDragEnd={() => {
+										setDraggingSectionId(null);
+										setDropTarget(null);
+									}}
 								/>
 							);
+							const menu = (
+								<div className="ml-auto flex items-center gap-1">
+									{dragHandle}
+									<SectionMenu
+										canMoveUp={index > 0}
+										canMoveDown={index < sections.length - 1}
+										disabled={editor.reorderingSections || Boolean(editor.savingSectionId)}
+										onMove={(direction) => void editor.moveSection(section.id, direction)}
+										onDelete={() => void editor.deleteSection(section.id)}
+										onGenerate={isGeneratableKind(section.kind) ? () => void editor.generateSection(section.id) : undefined}
+										generating={editor.generatingSectionId === section.id}
+									/>
+								</div>
+							);
+							let card: ReactNode;
 							if (canEdit) {
-								return renderSection(section, <T,>(): SectionEdit<T> => ({
+								card = renderSection(section, <T,>(): SectionEdit<T> => ({
 									onTitleChange: (title) => void editor.renameSection(section.id, title),
 									onItemsChange: (items) => void editor.saveItems(section.id, items),
 									menu,
 								}));
+							} else if (canManage) {
+								// Translated view: text stays read-only, the section menu is overlaid.
+								card = (
+									<div className="group/card relative flex flex-col [&>*:first-child]:flex-1">
+										{renderSection(section)}
+										<div className="absolute right-3 top-3 flex">{menu}</div>
+									</div>
+								);
+							} else {
+								return renderSection(section);
 							}
-							// Translated view: text stays read-only, the section menu is overlaid.
-							return canManage ? (
-								<div key={section.id} className="group/card relative flex flex-col [&>*:first-child]:flex-1">
-									{renderSection(section)}
-									<div className="absolute right-3 top-3 flex">{menu}</div>
+							return (
+								<div
+									key={section.id}
+									className={`relative min-w-0 rounded-xl ${dropTarget?.id === section.id ? "ring-2 ring-brand-orange/60" : ""} ${draggingSectionId === section.id ? "opacity-50" : ""}`}
+									onDragOver={(event) => {
+										if (!draggingSectionId || draggingSectionId === section.id || editor.reorderingSections) return;
+										event.preventDefault();
+										event.dataTransfer.dropEffect = "move";
+										const after = event.clientY > event.currentTarget.getBoundingClientRect().top + event.currentTarget.offsetHeight / 2;
+										setDropTarget((current) => current?.id === section.id && current.after === after ? current : { id: section.id, after });
+									}}
+									onDrop={(event) => {
+										event.preventDefault();
+										const movingId = draggingSectionId || event.dataTransfer.getData("text/plain");
+										const after = event.clientY > event.currentTarget.getBoundingClientRect().top + event.currentTarget.offsetHeight / 2;
+										if (movingId) void editor.reorderSections(moveVisibleSection(sections.map((item) => item.id), movingId, section.id, after));
+										setDraggingSectionId(null);
+										setDropTarget(null);
+									}}
+								>
+									{card}
 								</div>
-							) : (
-								renderSection(section)
 							);
 						})}
 					</div>

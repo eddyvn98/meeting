@@ -131,12 +131,12 @@ export function MobileRecordingActions({
       {isRecording && (
         <div className="grid grid-cols-3 gap-2">
           <button type="button" aria-label="Mark important" onClick={onMarkImportant} className="flex min-h-11 items-center justify-center gap-1 rounded-lg border border-border px-1 text-[11px] font-semibold text-foreground">
-            <Flag className="h-4 w-4 text-primary" /> Mark
+            <Flag className="h-4 w-4 text-brand-orange" /> Mark
           </button>
           <button type="button" aria-label={isPaused ? "Resume recording" : "Pause recording"} disabled={ending} onClick={isPaused ? onResume : onPause} className="flex min-h-11 items-center justify-center gap-1 rounded-lg border border-border px-1 text-[11px] font-semibold text-foreground">
             {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />} {isPaused ? "Resume" : "Pause"}
           </button>
-          <button type="button" aria-label={endArmed ? "Tap again to end meeting" : "End meeting"} disabled={ending} onClick={armOrEndMeeting} className="flex min-h-11 items-center justify-center gap-1 rounded-lg bg-primary px-1 text-[11px] font-semibold text-white">
+          <button type="button" aria-label={endArmed ? "Tap again to end meeting" : "End meeting"} disabled={ending} onClick={armOrEndMeeting} className="flex min-h-11 items-center justify-center gap-1 rounded-lg bg-brand-orange px-1 text-[11px] font-semibold text-white">
             <Square className="h-4 w-4 fill-white" /> {endArmed ? "Tap again" : "End"}
           </button>
         </div>
@@ -152,13 +152,13 @@ export function MobileRecordingActions({
       )}
       {errorMessage && <p className="mt-2 rounded-lg bg-red-500/10 px-2.5 py-2 text-[11px] text-red-700 dark:text-red-300">{errorMessage}</p>}
       {canOpenResult && (
-        <button type="button" aria-label="Open meeting result" onClick={onOpenResult} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-2 text-xs font-semibold text-white">
+        <button type="button" aria-label="Open meeting result" onClick={onOpenResult} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand-orange px-2 text-xs font-semibold text-white">
           <ExternalLink className="h-4 w-4" /> Open meeting result
         </button>
       )}
       {isRecording && (
         <label className="mt-2 flex items-start gap-2 rounded-lg border border-border/70 bg-muted/20 px-2.5 py-2 text-xs text-foreground">
-          <input type="checkbox" checked={keepScreenAwake} onChange={(event) => onKeepScreenAwakeChange(event.target.checked)} className="mt-0.5 h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary" />
+          <input type="checkbox" checked={keepScreenAwake} onChange={(event) => onKeepScreenAwakeChange(event.target.checked)} className="mt-0.5 h-3.5 w-3.5 rounded border-border text-brand-orange focus:ring-brand-orange" />
           <span>
             <span className="block font-medium">Keep screen awake</span>
             <span className="block text-[11px] text-muted-foreground">

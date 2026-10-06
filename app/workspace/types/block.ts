@@ -145,7 +145,7 @@ export interface BlockDataMap {
     /** Last-viewed PDF page; absent = page 1. */
     range?: { page: number };
   };
-  shape: { shapeKind: ShapeKind; label?: string };
+  shape: { shapeKind: ShapeKind; label?: string; frameBlockIds?: BlockId[] };
   /** Freehand pen stroke. `points` are in block-local space (0..w, 0..h) so the
    *  stroke scales naturally if the block is ever resized. */
   path: {

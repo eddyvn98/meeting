@@ -3,7 +3,7 @@
  *
  * "Ask across this group" — the group page's aggregate Q&A (see
  * app/api/meeting/groups/[groupId]/ask/route.ts and
- * MeetingGroupAskPanel.tsx). Same shared CHAT_KEY agent as
+ * MeetingGroupAskPanel.tsx). Same dedicated Meeting workflow as
  * difyMeetingAgent.ts's askMeetingAgent, but fed a SEPARATE transcript
  * excerpt per selected meeting instead of one meeting's whole transcript —
  * the caller ticks which meetings in the group to include, so this never

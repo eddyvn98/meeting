@@ -54,6 +54,9 @@ export interface BoardCommitInput {
   /** Version restore already has an explicit history row and must not create
    *  a second automatic snapshot as a side effect. */
   skipAutoCheckpoint?: boolean;
+  writeCommandReceipt?: (tx: Prisma.TransactionClient, board: WorkspaceBoard) => Promise<void>;
+  writeAgentHistory?: (tx: Prisma.TransactionClient) => Promise<void>;
+  beforeBoardCommit?: (tx: Prisma.TransactionClient) => Promise<void>;
 }
 
 /**
@@ -65,6 +68,7 @@ export async function commitBoardContent(input: BoardCommitInput): Promise<Board
   const { boardId, actorEmail, content, editEvents, baseRevision, existing } = input;
 
   const outcome = await prisma.$transaction(async (tx) => {
+    if (input.beforeBoardCommit) await input.beforeBoardCommit(tx);
     if (!existing) {
       let created: WorkspaceBoard;
       try {
@@ -89,6 +93,8 @@ export async function commitBoardContent(input: BoardCommitInput): Promise<Board
         throw err;
       }
       if (editEvents.length > 0) await tx.workspaceBoardEditEvent.createMany({ data: editEvents });
+      if (input.writeCommandReceipt) await input.writeCommandReceipt(tx, created);
+      if (input.writeAgentHistory) await input.writeAgentHistory(tx);
       return { board: created };
     }
     // Compare-and-swap in ONE statement rather than read-then-write: matching
@@ -101,7 +107,11 @@ export async function commitBoardContent(input: BoardCommitInput): Promise<Board
     });
     if (applied.count === 0) return { stale: true as const };
     if (editEvents.length > 0) await tx.workspaceBoardEditEvent.createMany({ data: editEvents });
-    return { board: await tx.workspaceBoard.findUnique({ where: { id: boardId } }) };
+    const committed = await tx.workspaceBoard.findUnique({ where: { id: boardId } });
+    if (!committed) throw new Error("Committed Workspace board disappeared inside transaction");
+    if (input.writeCommandReceipt) await input.writeCommandReceipt(tx, committed);
+    if (input.writeAgentHistory) await input.writeAgentHistory(tx);
+    return { board: committed };
   });
 
   if ("stale" in outcome) {

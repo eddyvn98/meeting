@@ -39,7 +39,7 @@ export function RowCommentButton({ anchorId, className = "" }: { anchorId: strin
           title={total ? `${unresolved} unresolved of ${total}` : "Add comment"}
           className={`inline-flex items-center gap-0.5 rounded p-1 text-xs transition-opacity print:hidden ${
             unresolved > 0
-              ? "bg-primary/15 font-semibold text-primary"
+              ? "bg-brand-orange/15 font-semibold text-brand-orange"
               : total > 0
                 ? "text-muted-foreground"
                 : `text-muted-foreground hover:bg-muted md:opacity-0 md:focus:opacity-100 md:group-hover/row:opacity-100 md:group-hover/matter:opacity-100 ${open ? "md:opacity-100" : ""}`
@@ -76,7 +76,7 @@ export function RowCommentButton({ anchorId, className = "" }: { anchorId: strin
                   />
                 </div>
               ))}
-              <button type="button" className="self-start text-xs font-medium text-muted-foreground hover:text-primary" onClick={() => setReplyTo(replyTo === comment.id ? null : comment.id)}>
+              <button type="button" className="self-start text-xs font-medium text-muted-foreground hover:text-brand-orange" onClick={() => setReplyTo(replyTo === comment.id ? null : comment.id)}>
                 {replyTo === comment.id ? "Cancel reply" : "Reply"}
               </button>
             </div>
@@ -95,11 +95,11 @@ export function RowCommentButton({ anchorId, className = "" }: { anchorId: strin
               }
             }}
             placeholder={replyTo ? "Write a reply…" : "Write a comment…"}
-            className="w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+            className="w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-brand-orange"
           />
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-muted-foreground">Ctrl/⌘ + Enter to send</span>
-            <button type="button" disabled={!draft.trim()} onClick={() => void submit()} className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50">
+            <button type="button" disabled={!draft.trim()} onClick={() => void submit()} className="rounded-md bg-brand-orange px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50">
               {replyTo ? "Reply" : "Comment"}
             </button>
           </div>

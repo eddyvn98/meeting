@@ -36,7 +36,6 @@
     "lucide-react": "^0.553.0",
     "mammoth": "^1.12.0",
     "mermaid": "^11.15.0",
-    "mongodb": "^6.21.0",
     "next": "14.2.16",
     "next-auth": "latest",
     "onnxruntime-common": "^1.24.3",

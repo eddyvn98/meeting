@@ -7,80 +7,33 @@ import {
   rootBotSourceKey,
   sameBotOccurrence,
 } from "@/lib/meeting/bot/sessionKeys";
+import {
+  canonicalEmail,
+  cleanCalendarSyncKey,
+  graphCalendarSourceKey,
+  parseCalendarSyncDate,
+  parseCalendarSyncPayload,
+} from "@/lib/meeting/bot/calendarSyncPayload";
 
 export const runtime = "nodejs";
 
 const ACTIVE = ["CLAIMED", "JOINING", "LOBBY", "JOINED", "CAPTURING"] as const;
-const MAX_EVENTS = 1000;
-
-function canonicalEmail(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const email = value.trim().toLowerCase();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
-}
-
-function cleanKey(value: unknown, max = 512): string | null {
-  if (typeof value !== "string") return null;
-  const key = value.trim();
-  return key && key.length <= max ? key : null;
-}
-
-function parseDate(value: unknown): Date | null {
-  if (typeof value !== "string") return null;
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? null : date;
-}
-
-function sourceKey(mailboxKey: string, eventId: string, scheduledAt: Date): string {
-  return `graph:${mailboxKey}:${eventId}:${scheduledAt.toISOString()}`;
-}
-
-type SyncEvent = {
-  eventId?: unknown;
-  meetingUrl?: unknown;
-  title?: unknown;
-  scheduledAt?: unknown;
-  ownerEmail?: unknown;
-  organizerEmail?: unknown;
-  organizerAllowed?: unknown;
-  invited?: unknown;
-  cancelled?: unknown;
-  declined?: unknown;
-};
 
 export async function POST(req: NextRequest) {
   if (!isBotRunnerRequest(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: {
-    mailboxKey?: unknown;
-    botEmail?: unknown;
-    windowStart?: unknown;
-    windowEnd?: unknown;
-    events?: unknown;
-  };
+  let body: unknown;
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const mailboxKey = cleanKey(body.mailboxKey, 240);
-  const botEmail = canonicalEmail(body.botEmail);
-  const windowStart = parseDate(body.windowStart);
-  const windowEnd = parseDate(body.windowEnd);
-  const events = Array.isArray(body.events) ? body.events as SyncEvent[] : null;
-
-  if (!mailboxKey || !botEmail || !windowStart || !windowEnd || !events) {
-    return NextResponse.json({ error: "mailboxKey, botEmail, windowStart, windowEnd, and events are required." }, { status: 400 });
-  }
-  if (windowEnd <= windowStart) {
-    return NextResponse.json({ error: "Calendar sync window is invalid." }, { status: 400 });
-  }
-  if (events.length > MAX_EVENTS) {
-    return NextResponse.json({ error: `Calendar sync is limited to ${MAX_EVENTS} events per snapshot.` }, { status: 400 });
-  }
+  const parsed = parseCalendarSyncPayload(body);
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
+  const { mailboxKey, windowStart, windowEnd, events } = parsed.payload;
 
   const prefix = `graph:${mailboxKey}:`;
   const seen = new Set<string>();
@@ -117,14 +70,14 @@ export async function POST(req: NextRequest) {
   }
 
   for (const item of events) {
-    const eventId = cleanKey(item.eventId);
-    const scheduledAt = parseDate(item.scheduledAt);
+    const eventId = cleanCalendarSyncKey(item.eventId);
+    const scheduledAt = parseCalendarSyncDate(item.scheduledAt);
     if (!eventId || !scheduledAt) {
       stats.ignored += 1;
       continue;
     }
 
-    const key = sourceKey(mailboxKey, eventId, scheduledAt);
+    const key = graphCalendarSourceKey(mailboxKey, eventId, scheduledAt);
     const eventPrefix = `${prefix}${eventId}:`;
     seen.add(key);
     seenEventPrefixes.add(eventPrefix);

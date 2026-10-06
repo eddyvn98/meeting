@@ -32,7 +32,7 @@ export function FinalizeRetryButton({ meeting, onDone }: { meeting: Meeting; onD
         type="button"
         onClick={retry}
         disabled={busy}
-        className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+        className="inline-flex items-center gap-1.5 rounded-md bg-brand-orange px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
       >
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
         Finalize again

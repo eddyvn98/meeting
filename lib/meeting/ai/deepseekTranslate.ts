@@ -2,13 +2,13 @@
  * Low-latency Meeting translation through the processing Dify app.
  *
  * Transport retries happen inside callWorkflowApp. Model fallback stays in
- * the same Dify app and is enabled by MEETING_DIFY_TRANSLATION_FALLBACK_MODEL.
+ * the same Dify app and is enabled by MEETING_DIFY_TRANSLATION_FALLBACK_ENABLED.
  */
 
 import { callWorkflowApp } from "./difyClient";
 import {
   getMeetingProcessingConfig,
-  getProcessingModelPolicy,
+  isMeetingTranslationFallbackEnabled,
 } from "./processingWorkflow";
 
 const DEFAULT_CALLER_EMAIL = "system@meeting.local";
@@ -29,20 +29,15 @@ function translationConfig(): { key: string; url: string } | null {
   return getMeetingProcessingConfig(TRANSLATION_LEGACY_KEYS, TRANSLATION_LEGACY_URLS);
 }
 
-function modelLabel(model: string | undefined, role: "primary" | "fallback"): string {
-  return model || `processing-${role}`;
-}
-
 function modelInputs(
   text: string,
   targetLanguage: string,
-  model?: string,
+  task: "translate" | "translate_turbo",
 ): Record<string, unknown> {
   return {
-    task: "translate",
+    task,
     text,
     target_language: targetLanguage,
-    ...(model ? { model_selector: model } : {}),
   };
 }
 
@@ -51,10 +46,10 @@ async function translateWithModel(
   targetLanguage: string,
   user: string,
   config: { key: string; url: string },
-  model?: string,
+  task: "translate" | "translate_turbo",
 ): Promise<string | null> {
   return callWorkflowApp(
-    modelInputs(text, targetLanguage, model),
+    modelInputs(text, targetLanguage, task),
     user,
     config.key,
     config.url,
@@ -69,8 +64,7 @@ export async function translateSingleSegmentFastDetailed(
   callerEmail?: string,
 ): Promise<LiveTranslationResult | null> {
   const trimmed = text.trim();
-  const { primaryModel, fallbackModel } = getProcessingModelPolicy("translation");
-  const primaryLabel = modelLabel(primaryModel, "primary");
+  const primaryLabel = "qwen3.6-flash";
   if (!trimmed) return { text: "", provider: primaryLabel, elapsedMs: 0, attempts: 0 };
 
   const config = translationConfig();
@@ -79,7 +73,7 @@ export async function translateSingleSegmentFastDetailed(
   const user = callerEmail || process.env.NEXT_PUBLIC_DEV_USER_EMAIL || DEFAULT_CALLER_EMAIL;
   const startedAt = Date.now();
 
-  const primary = await translateWithModel(trimmed, targetLanguage, user, config, primaryModel);
+  const primary = await translateWithModel(trimmed, targetLanguage, user, config, "translate");
   if (primary?.trim()) {
     return {
       text: primary.trim(),
@@ -89,13 +83,13 @@ export async function translateSingleSegmentFastDetailed(
     };
   }
 
-  if (!fallbackModel || fallbackModel === primaryModel) return null;
-  const fallback = await translateWithModel(trimmed, targetLanguage, user, config, fallbackModel);
+  if (!isMeetingTranslationFallbackEnabled()) return null;
+  const fallback = await translateWithModel(trimmed, targetLanguage, user, config, "translate_turbo");
   if (!fallback?.trim()) return null;
 
   return {
     text: fallback.trim(),
-    provider: modelLabel(fallbackModel, "fallback"),
+      provider: "qwen-mt-turbo",
     elapsedMs: Date.now() - startedAt,
     attempts: 2,
   };

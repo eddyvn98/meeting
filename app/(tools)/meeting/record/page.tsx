@@ -1,7 +1,7 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import ProtectedRoute from "@/components/features/auth/protected-route";
 import { useToolLayoutSlots } from "@/hooks/use-tool-layout-slots";
 import { MeetingAside } from "../components/MeetingAside";
@@ -14,25 +14,23 @@ function defaultTitle(): string {
 /** Recording Screen route (spec section 6). Reached from the Home screen's
  *  "Start Meeting" button; ?title= carries the meeting name entered there
  *  (falls back to a timestamped default). */
-function MeetingRecordContent() {
+function RecordingPageContent() {
   const searchParams = useSearchParams();
   const title = searchParams?.get("title")?.trim() || defaultTitle();
 
+  return <RecordingScreen title={title} />;
+}
+
+export default function MeetingRecordPage() {
   useToolLayoutSlots({ showHistory: false, aside: <MeetingAside /> });
 
   return (
     <ProtectedRoute>
       <div className="h-full w-full overflow-y-auto bg-background">
-        <RecordingScreen title={title} />
+        <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Preparing recording…</div>}>
+          <RecordingPageContent />
+        </Suspense>
       </div>
     </ProtectedRoute>
-  );
-}
-
-export default function MeetingRecordPage() {
-  return (
-    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading recording setup…</div>}>
-      <MeetingRecordContent />
-    </Suspense>
   );
 }

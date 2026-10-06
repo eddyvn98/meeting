@@ -133,14 +133,16 @@ export type BoardAccessResult =
  * localStorage, which is exactly the stale value that would defeat the check.
  */
 const knownRevisions = new Map<string, number>();
+export function getKnownRevision(id: string): number | undefined { return knownRevisions.get(id); }
 const knownContents = new Map<string, BoardContent>();
 
 /** Exported so a caller that fetches a board through its own request (e.g. a
  *  Dify-mutation refresh) can still tell this cache what revision it landed
  *  on — otherwise the very next autosave uses the old baseRevision and is
  *  refused with a 409 even though nothing is actually stale. */
-export function rememberRevision(board: RemoteBoard | undefined): void {
+export function rememberRevision(board: Pick<RemoteBoard, "id" | "revision" | "blocks" | "blockOrder" | "connectors"> | undefined): void {
   if (board?.id && typeof board.revision === "number") {
+    if (board.revision < (knownRevisions.get(board.id) ?? -1)) return;
     clearBoardPendingCreate(board.id);
     knownRevisions.set(board.id, board.revision);
     knownContents.set(board.id, {

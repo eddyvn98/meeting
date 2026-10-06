@@ -155,7 +155,7 @@ export function MeetingSpeakerRenameList({
 							key={group.displayName}
 							className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
 								activeFilter === group.displayName
-									? "border-primary bg-primary-light/40 dark:bg-amber-950/20"
+									? "border-brand-orange bg-brand-orange-light/40 dark:bg-amber-950/20"
 									: "border-border bg-muted"
 							}`}
 						>
@@ -174,7 +174,7 @@ export function MeetingSpeakerRenameList({
 									aria-label={`Play sample of ${group.displayName}`}
 									title="Play a sample of this speaker"
 								>
-									<PlayCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+									<PlayCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-brand-orange" />
 								</button>
 							)}
 							{group.displayName !== UNKNOWN_SPEAKER_NAME && (
@@ -269,7 +269,7 @@ export function MeetingSpeakerRenameList({
 							type="button"
 							onClick={submitMerge}
 							disabled={!mergeSource || !mergeTarget || mergeSource === mergeTarget || saving}
-							className="rounded-md bg-primary px-2.5 py-1 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+							className="rounded-md bg-brand-orange px-2.5 py-1 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							Merge
 						</button>

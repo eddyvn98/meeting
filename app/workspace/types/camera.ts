@@ -11,7 +11,10 @@ export interface CameraFrame {
   id: string;
   name: string;
   camera: Pick<CameraState, "x" | "y" | "zoom">;
-  /** Present mode will cycle frames in this order. Not consumed by anything yet. */
+  blockIds?: string[];
+  hiddenInPresentation?: boolean;
+  presenterNotes?: string;
+  /** Presentation order. */
   order: number;
 }
 

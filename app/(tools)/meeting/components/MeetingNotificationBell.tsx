@@ -87,14 +87,14 @@ export function MeetingNotificationBell() {
 					className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-[state=open]:bg-muted"
 				>
 					<Bell className="h-4 w-4" />
-					{unread > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-white">{unread > 9 ? "9+" : unread}</span>}
+					{unread > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-orange px-1 text-[9px] font-bold text-white">{unread > 9 ? "9+" : unread}</span>}
 				</button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="start" className="z-50 max-h-96 w-80 overflow-y-auto rounded-xl p-0">
 				<div className="flex items-center justify-between border-b border-border px-3 py-2">
 					<span className="text-xs font-bold text-foreground">Notifications</span>
 					{items.length > 0 && (
-						<button type="button" onClick={clearAll} className="text-[11px] font-semibold text-primary hover:underline">
+						<button type="button" onClick={clearAll} className="text-[11px] font-semibold text-brand-orange hover:underline">
 							Clear all
 						</button>
 					)}

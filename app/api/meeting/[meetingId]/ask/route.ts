@@ -13,13 +13,12 @@ const MAX_QUESTION_LENGTH = 4_000;
 /**
  * POST /api/meeting/[meetingId]/ask — "Ask this meeting" Q&A.
  *
- * Tries the app's general-purpose chat AI first (lib/meeting/ai/difyMeetingAgent.ts,
- * the same CHAT_KEY agent behind app/api/chat/messages/route.ts), giving it
+ * Uses the dedicated Meeting workflow (lib/meeting/ai/difyMeetingAgent.ts), giving it
  * the meeting's transcript (each line timestamped) plus the caller-supplied
  * `history` of earlier turns in this conversation as inline context, so the
  * Ask tab can behave like a normal continuous chat instead of one-shot Q&A —
  * see MeetingAskTab.tsx, which keeps that history client-side and resends it
- * with every new question. If CHAT_KEY isn't configured,
+ * with every new question. If the Meeting workflow isn't configured,
  * or the upstream call fails, falls back to a naive case-insensitive keyword match over the transcript
  * text and a templated placeholder answer, so the tab still returns
  * something usable offline/in dev. Evidence timestamps (matched transcript
