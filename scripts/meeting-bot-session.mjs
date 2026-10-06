@@ -555,7 +555,7 @@ export function createBotSessionRunner(config) {
           meetingId: recorder.meetingId,
           errorMessage: exitMessage ?? "The runner shut down after finalizing the recording.",
         }).catch(() => undefined);
-        continue;
+        return;
       }
       const processingOutcome = await recorderRuntime.waitForProcessing(
         recorder, session, heartbeat, recordedMs,
