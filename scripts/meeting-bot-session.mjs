@@ -158,9 +158,15 @@ export function createBotSessionRunner(config) {
           ? session.attendeeEmails.map((email) => String(email).trim().toLowerCase()).filter(Boolean)
           : [],
       );
+      const presentAttendeeEmails = new Set(
+        Array.isArray(session.presentAttendeeEmails)
+          ? session.presentAttendeeEmails.map((email) => String(email).trim().toLowerCase()).filter(Boolean)
+          : [],
+      );
       logIdentityDiagnostic(session.id, "session", "INITIAL_STATE", {
         authenticated: teamsRuntime.authenticated,
-        existingEmails: attendeeEmails.size,
+        existingInviteeEmails: attendeeEmails.size,
+        existingPresentEmails: presentAttendeeEmails.size,
       });
       const speakerObservations = [];
       let nextRosterPersistAt = 0;
@@ -182,11 +188,28 @@ export function createBotSessionRunner(config) {
           identityDirty = true;
           logIdentityDiagnostic(session.id, source, "EMAILS_MERGED", {
             added,
-            totalEmails: attendeeEmails.size,
+            inviteeEmails: attendeeEmails.size,
+            presentEmails: presentAttendeeEmails.size,
           });
         } else {
           logIdentityDiagnostic(session.id, source, "NO_NEW_EMAILS", {
             totalEmails: attendeeEmails.size,
+          });
+        }
+      };
+
+      const mergePresentAttendeeEmails = (emails, source = "teams") => {
+        const before = presentAttendeeEmails.size;
+        for (const value of emails || []) {
+          const email = typeof value === "string" ? value.trim().toLowerCase() : "";
+          if (email) presentAttendeeEmails.add(email);
+        }
+        const added = presentAttendeeEmails.size - before;
+        if (added > 0) {
+          identityDirty = true;
+          logIdentityDiagnostic(session.id, source, "PRESENT_EMAILS_MERGED", {
+            added,
+            totalPresentEmails: presentAttendeeEmails.size,
           });
         }
       };
@@ -293,10 +316,10 @@ export function createBotSessionRunner(config) {
             }, "warn");
             return [];
           });
-          mergeAttendeeEmails(teamsEmails, "teams");
+          mergePresentAttendeeEmails(teamsEmails, "teams");
 
           if (
-            attendeeEmails.size === 0 &&
+            presentAttendeeEmails.size === 0 &&
             identityProbeAttempts >= 3 &&
             !identityWarningIssued
           ) {
@@ -308,8 +331,8 @@ export function createBotSessionRunner(config) {
               {
                 attempts: identityProbeAttempts,
                 participants: rosterNames.size,
-                totalEmails: attendeeEmails.size,
-                note: "recording/STT continues; automatic shared-room access may be incomplete",
+                totalPresentEmails: presentAttendeeEmails.size,
+                note: "recording/STT continues; automatic shared-room access is withheld until a Teams identity is verified",
               },
               "warn",
             );
@@ -331,6 +354,7 @@ export function createBotSessionRunner(config) {
       const rosterPayload = () => ({
         participantNames: [...rosterNames.values()],
         attendeeEmails: [...attendeeEmails.values()],
+        presentAttendeeEmails: [...presentAttendeeEmails.values()],
         speakerObservations: [...speakerObservations],
       });
 
@@ -511,7 +535,8 @@ export function createBotSessionRunner(config) {
           nextRosterPersistAt = nowMs + ROSTER_PERSIST_MS;
           if (persistingIdentityChange) {
             logIdentityDiagnostic(session.id, "session", "PERSIST_CONFIRMED", {
-              totalEmails: attendeeEmails.size,
+              inviteeEmails: attendeeEmails.size,
+              presentEmails: presentAttendeeEmails.size,
             });
           }
           identityDirty = false;
@@ -528,6 +553,7 @@ export function createBotSessionRunner(config) {
       logIdentityDiagnostic(session.id, "session", "FINAL_STATE", {
         participants: rosterNames.size,
         attendeeEmails: attendeeEmails.size,
+        presentAttendeeEmails: presentAttendeeEmails.size,
         probes: identityProbeAttempts,
       });
       await heartbeat.update("STOP_REQUESTED", {
