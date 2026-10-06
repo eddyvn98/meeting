@@ -174,8 +174,10 @@ async function clickFirstVisible(locator) {
   for (let index = 0; index < count; index += 1) {
     const item = locator.nth(index);
     if (!await item.isVisible().catch(() => false)) continue;
-    await item.click({ timeout: 2_000 }).catch(() => undefined);
-    return true;
+    const clicked = await item.click({ timeout: 2_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (clicked) return true;
   }
   return false;
 }
