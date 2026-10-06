@@ -196,19 +196,10 @@ export async function readTeamsParticipantEmails(page, {
 async function outlookAttendeeEmails(dialog) {
   const result = new Set();
 
-  // Prefer explicit mailto links: these are strong identity signals and avoid
-  // accidentally reading arbitrary email-like text from the meeting body.
-  const mailtoLinks = dialog.locator('a[href^="mailto:" i]');
-  const mailtoCount = Math.min(await mailtoLinks.count().catch(() => 0), 300);
-  for (let index = 0; index < mailtoCount; index += 1) {
-    const href = await mailtoLinks.nth(index).getAttribute("href").catch(() => null);
-    const email = extractEmailsFromText(href || "")[0];
-    if (email) result.add(email);
-  }
-
-  // Outlook sometimes renders attendee identities as plain text inside
-  // attendee/persona/recipient rows instead of mailto anchors. Restrict this
-  // fallback to semantic attendee-like containers rather than the whole event.
+  // Identity is authorization data. Never scan mailto links across the whole
+  // event dialog: a meeting description can legitimately contain arbitrary
+  // contact addresses that are not invitees. Read emails only from semantic
+  // attendee/persona/recipient containers.
   const rows = dialog.locator([
     '[data-automationid*="attendee" i]',
     '[data-testid*="attendee" i]',
