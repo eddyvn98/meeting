@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { prisma } from "@/lib/prisma";
@@ -66,6 +66,21 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     }
     if (!acceptsAudio(lockedMeeting)) throw new MeetingClosedError();
     await rename(temp, target);
+
+    // A retry can come from a browser that records a different codec, which
+    // changes the full.<ext> filename. Keep exactly the newly published file;
+    // otherwise findFullAudio() could see an obsolete alternate extension.
+    const siblings = await readdir(dir).catch(() => [] as string[]);
+    await Promise.all(
+      siblings
+        .filter(
+          (name) =>
+            name.startsWith("full.") &&
+            !name.endsWith(".uploading") &&
+            join(dir, name) !== target,
+        )
+        .map((name) => rm(join(dir, name), { force: true })),
+    );
     return true;
   }, { maxWait: 15_000, timeout: 30_000 }).catch(async (error) => {
     await rm(temp, { force: true }).catch(() => undefined);
