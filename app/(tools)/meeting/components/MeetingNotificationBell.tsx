@@ -10,7 +10,7 @@ const POLL_INTERVAL_MS = 20_000;
 interface MeetingNotification {
 	id: string;
 	meetingId: string;
-	type: "COMMENT" | "REPLY" | "SHARE_INVITE";
+	type: "COMMENT" | "REPLY" | "SHARE_INVITE" | "LIVE_ROOM";
 	body: string;
 	read: boolean;
 	createdAt: string;
@@ -24,7 +24,7 @@ function formatAgo(iso: string): string {
 	return hours < 24 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
 }
 
-/** Bell for the Meeting module: new comments, replies and invitations. Polls
+/** Bell for the Meeting module: new comments, replies, invitations and live shared rooms. Polls
  *  every 20s (like the Workspace bell). Opening the bell marks everything read
  *  (the badge clears); clicking an item goes to the Minutes (comments) or the
  *  meeting (invitations). Items can be removed one by one or all at once. */
@@ -52,7 +52,7 @@ export function MeetingNotificationBell() {
 
 	const openItem = (n: MeetingNotification) => {
 		setOpen(false);
-		router.push(n.type === "SHARE_INVITE" ? `/meeting/${n.meetingId}` : `/meeting/${n.meetingId}/minutes`);
+		router.push(n.type === "LIVE_ROOM" ? `/meeting/${n.meetingId}?tab=transcript` : n.type === "SHARE_INVITE" ? `/meeting/${n.meetingId}` : `/meeting/${n.meetingId}/minutes`);
 	};
 
 	const markAllRead = () => {
