@@ -39,7 +39,10 @@ export async function maybeRecoverSilentAudio({
   );
 
   if (typeof participantCount !== "number" || participantCount <= 1) {
-    return { teamsRuntime, lastRecoveryAt: now };
+    // No recovery was attempted. Keep the previous timestamp so a participant
+    // appearing on the next poll can trigger recovery immediately instead of
+    // being suppressed by the 10-minute cooldown.
+    return { teamsRuntime, lastRecoveryAt };
   }
 
   await recorderRuntime.pause(recorder);
