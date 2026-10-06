@@ -246,6 +246,10 @@ model MeetingBotSession {
   /// Union of real participant display names observed in the Teams roster
   /// during this bot session. The bot/self entry is excluded.
   participantNames String[]        @default([])
+  /// Canonical lower-case attendee emails from the Outlook/Graph occurrence.
+  /// These identities grant viewer access to the shared Meeting while keeping
+  /// ownerEmail as an administrative role rather than the room's ownership.
+  attendeeEmails   String[]        @default([])
   /// Best-effort active-speaker samples captured from Teams Web, stored as
   /// [{ atMs, names[] }]. Used only to map diarized speaker_N labels to roster
   /// names when confidence is high; never treated as transcript text.
