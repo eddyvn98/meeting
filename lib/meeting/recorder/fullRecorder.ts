@@ -14,6 +14,11 @@
  */
 
 const SLICE_MS = 5_000;
+// Keep the continuous quality copy comfortably below the server's 300 MB
+// upload cap and, more importantly, stop it from growing without bound in
+// Chromium memory during multi-hour bot meetings. Chunks remain the durable
+// loss-recovery source when this cap is reached.
+export const MAX_IN_MEMORY_FULL_AUDIO_BYTES = 240 * 1024 * 1024;
 const UPLOAD_ATTEMPTS = 3;
 const UPLOAD_TIMEOUT_MS = 5 * 60_000;
 
@@ -34,12 +39,21 @@ export function startFullRecorder(stream: MediaStream, mimeType: string): FullRe
   try {
     recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
     const parts: Blob[] = [];
+    let totalBytes = 0;
+    let discarded = false;
     recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) parts.push(event.data);
+      if (discarded || event.data.size <= 0) return;
+      totalBytes += event.data.size;
+      if (totalBytes > MAX_IN_MEMORY_FULL_AUDIO_BYTES) {
+        discarded = true;
+        totalBytes = 0;
+        parts.length = 0;
+        return;
+      }
+      parts.push(event.data);
     };
     recorder.start(SLICE_MS);
     let result: Promise<Blob | null> | null = null;
-    let discarded = false;
 
     return {
       pause() {
@@ -62,6 +76,7 @@ export function startFullRecorder(stream: MediaStream, mimeType: string): FullRe
       },
       discard() {
         discarded = true;
+        totalBytes = 0;
         parts.length = 0;
         if (recorder.state !== "inactive") recorder.stop();
       },
