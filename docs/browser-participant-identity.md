@@ -97,3 +97,59 @@ Recommended fit for this TypeScript codebase:
 - **Skyvern** — strong vision/agent browser automation, but heavier and AGPL; better as a separate automation service than a small embedded fallback.
 
 AI fallback must remain optional. Meeting capture must still work when the model/API is unavailable.
+
+
+## Headless diagnostics
+
+Identity extraction emits structured log lines in this shape:
+
+```text
+[meeting-bot][identity] session=<id> source=<teams|outlook|session|server> code=<REASON_CODE> ...
+```
+
+Important reason codes:
+
+| Code | Meaning |
+| --- | --- |
+| `PEOPLE_PANEL_OPEN_FAILED` | The runner could not open the Teams People/Participants panel. |
+| `ROSTER_NOT_VISIBLE` | No supported visible People/roster container was found. |
+| `PARTICIPANT_ROW_NOT_VISIBLE` | A roster name was known but no clickable participant row was visible. |
+| `PROFILE_OPEN_FAILED` | Playwright found the participant row but could not open the profile/contact card. |
+| `PROFILE_CARD_NOT_VISIBLE` | The click completed but no supported visible profile-card container appeared. |
+| `PROFILE_CARD_NO_EMAIL` | A profile card was visible but it exposed no email address. |
+| `PROFILE_EMAIL_FOUND` | Teams exposed at least one new participant email. |
+| `OUTLOOK_AUTH_REQUIRED` / `AUTH_REQUIRED` | The saved Microsoft session did not carry into Outlook Web. |
+| `EVENT_NOT_FOUND` | Outlook Calendar did not expose a matching event title in the current day view. |
+| `JOIN_URL_MISMATCH` | An Outlook event was opened, but its Teams join URL did not match the active bot session. |
+| `VERIFIED_EVENT_NO_EMAIL` | The verified Outlook event exposed no attendee email addresses. |
+| `EMAILS_MERGED` | The runner accepted new email identities from a source. |
+| `PERSIST_REQUESTED` / `PERSIST_CONFIRMED` | The runner sent newly discovered identities to the Meeting server. |
+| `ATTENDEE_EMAILS_PERSISTED` | The server confirmed that the session stored more attendee emails. |
+| `IDENTITY_DEGRADED` | Repeated authenticated probes still produced no email; recording/STT continues. |
+
+The default logs intentionally report counts and reasons instead of printing the email addresses themselves.
+
+### Optional screenshots
+
+Headless screenshots are disabled by default because meeting/profile/calendar screens can contain confidential information.
+
+Enable them only while troubleshooting:
+
+```env
+MEETING_BOT_DEBUG_ARTIFACTS=true
+MEETING_BOT_DEBUG_DIR=.meeting-bot-debug
+```
+
+When enabled, failures such as roster not visible, profile open failure, Outlook authentication, event-not-found, join-URL mismatch, and verified-event-without-email save a full-page PNG and log:
+
+```text
+code=SCREENSHOT_SAVED path=...
+```
+
+Do not upload this directory to source control. Treat screenshots as potentially sensitive meeting data and delete them after debugging.
+
+## AI fallback configuration
+
+The current browser identity implementation uses plain Playwright only and requires **no AI API key**.
+
+If Stagehand or another AI browser-agent fallback is added later, keep it behind a feature flag. Only that optional fallback would need a model/API credential (or a locally hosted compatible model). Recording, STT, and the deterministic Playwright path must remain usable without any AI key.
