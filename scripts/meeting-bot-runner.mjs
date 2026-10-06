@@ -149,6 +149,14 @@ const sessionRunner = createBotSessionRunner({
     process.env.MEETING_BOT_CONTROL_OUTAGE_GRACE_MS,
     60_000,
   ),
+  shutdownFinalizeTimeoutMs: positiveNumber(
+    process.env.MEETING_BOT_SHUTDOWN_FINALIZE_TIMEOUT_MS,
+    45_000,
+  ),
+  controlOutageFinalizeTimeoutMs: positiveNumber(
+    process.env.MEETING_BOT_CONTROL_OUTAGE_FINALIZE_TIMEOUT_MS,
+    90_000,
+  ),
   shouldShutdown: () => shuttingDown,
   identityStorageState: undefined,
 });
