@@ -4,8 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCw, Sparkles, Users } from "lucide-react";
 import type { MeetingDetail } from "@/lib/meeting/types";
 import { retryMeetingDiarization } from "@/lib/meeting/processing/retryMeetingDiarization";
-
-const STALE_RUNNING_MS = 2 * 60_000;
+import { canRetryPostprocess } from "@/lib/meeting/processing/postprocessRecovery";
 
 export function MeetingPostprocessRecovery({
   detail,
@@ -27,26 +26,19 @@ export function MeetingPostprocessRecovery({
     return () => window.clearInterval(timer);
   }, [detail.diarizationStatus, detail.enrichmentStatus]);
 
-  const runningIsStale = useMemo(
-    () => now - Date.parse(detail.updatedAt) >= STALE_RUNNING_MS,
-    [detail.updatedAt, now],
-  );
+  const updatedAtMs = useMemo(() => Date.parse(detail.updatedAt), [detail.updatedAt]);
 
   const canRetryDiarization =
     isOwner &&
     Boolean(detail.audioUrl) &&
     detail.transcriptSegments.length > 0 &&
-    (detail.diarizationStatus === "PENDING" ||
-      detail.diarizationStatus === "FAILED" ||
-      (detail.diarizationStatus === "RUNNING" && runningIsStale));
+    canRetryPostprocess(detail.diarizationStatus, updatedAtMs, now);
 
   const canRetryEnrichment =
     isOwner &&
     detail.transcriptSegments.length > 0 &&
     !detail.summary &&
-    (detail.enrichmentStatus === "PENDING" ||
-      detail.enrichmentStatus === "FAILED" ||
-      (detail.enrichmentStatus === "RUNNING" && runningIsStale));
+    canRetryPostprocess(detail.enrichmentStatus, updatedAtMs, now);
 
   const showDiarization =
     detail.diarizationStatus === "PENDING" ||
