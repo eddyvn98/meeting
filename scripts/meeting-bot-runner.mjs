@@ -7,6 +7,7 @@ import {
 import { createCalendarSync, hasCalendarConfig } from "./meeting-bot-calendar.mjs";
 import { computeProcessingTimeoutMs } from "./meeting-bot-lifecycle.mjs";
 import { createMeetingRecorderRuntime } from "./meeting-bot-recorder.mjs";
+import { cleanupStalePulseAudioModules } from "./meeting-bot-audio.mjs";
 import { createBotSessionRunner } from "./meeting-bot-session.mjs";
 
 const baseUrl = requiredEnv("MEETING_BOT_BASE_URL").replace(/\/$/, "");
@@ -170,6 +171,11 @@ async function main() {
     throw new Error(
       "MEETING_BOT_HEADLESS=false requires DISPLAY or WAYLAND_DISPLAY. Use headless mode for unattended Linux.",
     );
+  }
+
+  const cleanedPulseModules = await cleanupStalePulseAudioModules();
+  if (cleanedPulseModules > 0) {
+    console.log(`[meeting-bot] cleaned ${cleanedPulseModules} stale PulseAudio module(s) from dead runners.`);
   }
 
   const teamsStorageState = await getTeamsStorageState();
