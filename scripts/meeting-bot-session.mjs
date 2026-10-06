@@ -629,6 +629,7 @@ export function createBotSessionRunner(config) {
         if ([
           "RECORDER_CRASHED",
           "RECORDER_SOURCE_ENDED",
+          "RECORDER_CONTROL_FAILED",
           "TEAMS_RECOVERY_FAILED",
           "TEAMS_PAGE_CLOSED",
           "CONTROL_PLANE_UNAVAILABLE",
