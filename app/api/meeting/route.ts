@@ -44,11 +44,12 @@ export async function GET(req: NextRequest) {
   const sharedMeetingIds = activeShares.map((s) => s.meetingId);
   const sharedGroupByMeeting = new Map(activeShares.map((s) => [s.meetingId, s.groupId]));
 
-  // A participant positively observed in the live Teams roster is a natural
-  // member of the shared room. Calendar invitees who never joined do not get
-  // implicit transcript access.
+  // A calendar attendee is a natural member of the Teams room. The bot
+  // session is linked to the Meeting as soon as capture starts, so the live
+  // Meeting appears in every attendee's list without creating MeetingShare
+  // rows or making the inviter special.
   const attendeeSessions = await prisma.meetingBotSession.findMany({
-    where: { meetingId: { not: null }, presentAttendeeEmails: { has: callerEmail } },
+    where: { meetingId: { not: null }, attendeeEmails: { has: callerEmail } },
     select: { meetingId: true },
   });
   const attendeeMeetingIds = attendeeSessions.flatMap((session) => session.meetingId ? [session.meetingId] : []);
