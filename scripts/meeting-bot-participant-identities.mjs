@@ -6,6 +6,19 @@ export function extractEmailsFromText(value) {
   return [...new Set(found.map((email) => email.trim().toLowerCase()))];
 }
 
+export function teamsJoinIdentity(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    if (!["teams.microsoft.com", "teams.live.com", "teams.cloud.microsoft"].includes(host)) return null;
+    const path = decodeURIComponent(url.pathname).replace(/\/+$/, "").toLowerCase();
+    return path ? `${host}${path}` : null;
+  } catch {
+    return null;
+  }
+}
+
 function mergeEmails(target, values) {
   for (const value of values) {
     if (value) target.add(value.toLowerCase());
@@ -148,13 +161,32 @@ export async function readOutlookMeetingAttendeeEmails(context, session, {
     await page.waitForTimeout(200).catch(() => undefined);
 
     const dialogs = page.locator('[role="dialog"]:visible');
+    const expectedJoinIdentity = teamsJoinIdentity(session.meetingUrl);
+    if (!expectedJoinIdentity) return [];
+
     const emails = new Set();
+    let matchedMeeting = false;
     const dialogCount = Math.min(await dialogs.count().catch(() => 0), 5);
     for (let index = 0; index < dialogCount; index += 1) {
-      mergeEmails(emails, await emailsFromLocator(dialogs.nth(index)));
+      const dialog = dialogs.nth(index);
+      const joinLinks = dialog.locator(
+        'a[href*="teams.microsoft.com" i], a[href*="teams.live.com" i], a[href*="teams.cloud.microsoft" i]',
+      );
+      const joinCount = Math.min(await joinLinks.count().catch(() => 0), 20);
+      for (let linkIndex = 0; linkIndex < joinCount; linkIndex += 1) {
+        const href = await joinLinks.nth(linkIndex).getAttribute("href").catch(() => null);
+        if (teamsJoinIdentity(href) === expectedJoinIdentity) {
+          matchedMeeting = true;
+          break;
+        }
+      }
+      if (matchedMeeting) mergeEmails(emails, await emailsFromLocator(dialog));
     }
 
-    return [...emails];
+    // Title alone is not an authorization identity: duplicate meeting titles
+    // are common. Refuse Outlook-derived emails unless the event's Teams join
+    // URL matches the bot session.
+    return matchedMeeting ? [...emails] : [];
   } catch {
     return [];
   } finally {
