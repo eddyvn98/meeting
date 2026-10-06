@@ -49,6 +49,7 @@ export interface MeetingBotSession {
   meetingId: string | null;
   participantNames: string[];
   attendeeEmails: string[];
+  presentAttendeeEmails: string[];
   speakerObservations: MeetingBotSpeakerObservation[];
   lastHeartbeatAt: string | null;
   errorMessage: string | null;
@@ -66,5 +67,6 @@ export interface MeetingBotEventInput {
   errorMessage?: string;
   participantNames?: string[];
   attendeeEmails?: string[];
+  presentAttendeeEmails?: string[];
   speakerObservations?: MeetingBotSpeakerObservation[];
 }
