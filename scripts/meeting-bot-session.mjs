@@ -40,7 +40,7 @@ export function createBotSessionRunner(config) {
   let identityStorageState = config.identityStorageState;
   const {
     api, emit, recorderRuntime, runnerId, teamsDisplayName,
-    browserChannel, browserExecutable, headless, pollMs,
+    browserChannel, browserExecutable, headless, requireMediaOff, pollMs,
     lobbyTimeoutMs, reconnectTimeoutMs, rejoinWindowMs, rejoinAttemptMs,
     aloneTimeoutMs, initialAloneGraceMs, maxDurationMs, audioInitialWarnMs, audioSilenceWarnMs,
   } = config;
@@ -84,8 +84,6 @@ export function createBotSessionRunner(config) {
         "--disable-dev-shm-usage",
         "--autoplay-policy=no-user-gesture-required",
         "--disable-features=AudioServiceOutOfProcess",
-        "--use-fake-ui-for-media-stream",
-        "--use-fake-device-for-media-stream",
         "--disable-notifications",
       ],
     });
@@ -93,13 +91,6 @@ export function createBotSessionRunner(config) {
       storageState,
       viewport: { width: 1440, height: 1000 },
     });
-    for (const origin of [
-      "https://teams.microsoft.com",
-      "https://teams.live.com",
-      "https://teams.cloud.microsoft",
-    ]) {
-      await context.grantPermissions(["microphone", "camera"], { origin }).catch(() => undefined);
-    }
     const page = await context.newPage();
     return { browser, context, page, authenticated: Boolean(storageState) };
   }
@@ -108,7 +99,10 @@ export function createBotSessionRunner(config) {
     await runtime?.browser.close().catch(() => undefined);
   }
   async function joinTeams(runtime, session, heartbeat, timeoutMs = lobbyTimeoutMs) {
-    await prepareTeamsPage(runtime.page, session, teamsDisplayName, { authenticated: runtime.authenticated });
+    await prepareTeamsPage(runtime.page, session, teamsDisplayName, {
+      authenticated: runtime.authenticated,
+      requireMediaOff,
+    });
     return waitForTeamsJoin(runtime.page, {
       sessionId: session.id,
       updateStatus: heartbeat.update,
@@ -349,6 +343,24 @@ export function createBotSessionRunner(config) {
         if (snapshot.state === "REJECTED") {
           exitMessage = "The bot was rejected from the Teams meeting.";
           break;
+        }
+        if (snapshot.state === "AUTH_REQUIRED") {
+          throw Object.assign(
+            new Error("The saved Microsoft/Teams session expired during capture."),
+            { code: "TEAMS_AUTH_REQUIRED" },
+          );
+        }
+        if (snapshot.state === "ACCESS_DENIED") {
+          throw Object.assign(
+            new Error("Teams access was denied during capture."),
+            { code: "TEAMS_ACCESS_DENIED" },
+          );
+        }
+        if (snapshot.state === "INVALID_LINK") {
+          throw Object.assign(
+            new Error("Teams reported that the active meeting link is invalid or unavailable."),
+            { code: "TEAMS_INVALID_LINK" },
+          );
         }
         if (snapshot.state === "LEFT" || snapshot.state === "MEETING_ENDED") {
           await recorderRuntime.pause(recorder);
