@@ -9,6 +9,8 @@ import { parseSpeakerObservations, sanitizeParticipantNames } from "@/lib/meetin
 import { sanitizeMeetingAttendeeEmails } from "@/lib/meeting/bot/attendeeEmails";
 import type { Prisma } from "@prisma/client";
 import { notifyLiveRoomStarted } from "@/lib/meeting/notify";
+import { CAPTURE_INTERRUPTED_PREFIX } from "@/lib/meeting/audio/finalizeRetry";
+import { shouldFailMeetingForBotFailure, type MeetingBotFailureScope } from "@/lib/meeting/bot/meetingFailurePolicy";
 
 export const runtime = "nodejs";
 
@@ -30,6 +32,13 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
       !MEETING_BOT_STATUSES.includes(body.expectedStatus as MeetingBotStatus))
   ) {
     return NextResponse.json({ error: "expectedStatus must be a valid bot status." }, { status: 400 });
+  }
+  if (
+    body.meetingFailureScope !== undefined &&
+    body.meetingFailureScope !== "CAPTURE" &&
+    body.meetingFailureScope !== "PROCESSING"
+  ) {
+    return NextResponse.json({ error: "meetingFailureScope must be CAPTURE or PROCESSING." }, { status: 400 });
   }
 
   const session = await prisma.meetingBotSession.findUnique({ where: { id: params.sessionId } });
@@ -116,10 +125,23 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     }
     const nextSession = await tx.meetingBotSession.findUniqueOrThrow({ where: { id: session.id } });
     if (status === "FAILED" && meetingId) {
-      await tx.meeting.updateMany({
-        where: { id: meetingId, status: { in: ["UPLOADING", "PROCESSING"] } },
-        data: { status: "FAILED", failureReason },
+      const linkedMeeting = await tx.meeting.findUnique({
+        where: { id: meetingId },
+        select: { status: true, failureReason: true },
       });
+      const failureScope = (body.meetingFailureScope ?? "CAPTURE") as MeetingBotFailureScope;
+      if (linkedMeeting && shouldFailMeetingForBotFailure(linkedMeeting, failureScope)) {
+        await tx.meeting.update({
+          where: { id: meetingId },
+          data: {
+            status: "FAILED",
+            failureReason:
+              failureScope === "CAPTURE"
+                ? `${CAPTURE_INTERRUPTED_PREFIX}${failureReason}`
+                : failureReason,
+          },
+        });
+      }
     }
     return nextSession;
   }).catch(async (error) => {
@@ -144,7 +166,12 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
   if (status === "CAPTURING" && meetingId && (firstCaptureTransition || discoveredAttendee)) {
     const meeting = await prisma.meeting.findUnique({ where: { id: meetingId } });
     if (meeting) {
-      await notifyLiveRoomStarted(meeting, updated.attendeeEmails);
+      await notifyLiveRoomStarted(meeting, updated.attendeeEmails).catch((error) => {
+        console.warn(
+          `[meeting-bot] live-room notification failed for session ${session.id} without failing lifecycle:`,
+          error instanceof Error ? error.message : String(error),
+        );
+      });
     }
   }
   if (["ENDED", "FAILED"].includes(status)) {
