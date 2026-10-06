@@ -169,6 +169,34 @@ export async function readTeamsParticipantEmails(page, {
   return [...emails];
 }
 
+async function emailsForObservedParticipant(dialog, name) {
+  const matches = dialog.getByText(name, { exact: true });
+  const count = Math.min(await matches.count().catch(() => 0), 10);
+  const emails = new Set();
+
+  for (let index = 0; index < count; index += 1) {
+    const node = matches.nth(index);
+    if (!await node.isVisible().catch(() => false)) continue;
+
+    const candidates = [
+      node.locator('xpath=ancestor::*[@role="listitem"][1]'),
+      node.locator('xpath=ancestor::*[@role="option"][1]'),
+      node.locator('xpath=ancestor::button[1]'),
+      node.locator('xpath=ancestor::*[contains(translate(@data-automationid,"ATTENDEE","attendee"),"attendee")][1]'),
+    ];
+
+    for (const candidate of candidates) {
+      if (!await candidate.isVisible().catch(() => false)) continue;
+      const rowEmails = await emailsFromLocator(candidate, 20);
+      // Authorization must be unambiguous: one observed Teams display name
+      // may resolve to exactly one email in the same Outlook attendee row.
+      if (rowEmails.length === 1) emails.add(rowEmails[0]);
+    }
+  }
+
+  return [...emails];
+}
+
 async function clickFirstVisible(locator) {
   const count = Math.min(await locator.count().catch(() => 0), 20);
   for (let index = 0; index < count; index += 1) {
@@ -190,13 +218,21 @@ async function clickFirstVisible(locator) {
  */
 export async function readOutlookMeetingAttendeeEmails(context, session, {
   timeoutMs = 15_000,
+  participantNames = [],
 } = {}) {
   const sessionId = session?.id || "unknown";
   if (!context || !session?.title) {
     logIdentityDiagnostic(sessionId, "outlook", "MISSING_CONTEXT_OR_TITLE", {}, "warn");
     return [];
   }
-  logIdentityDiagnostic(sessionId, "outlook", "PROBE_START", { title: session.title });
+  logIdentityDiagnostic(sessionId, "outlook", "PROBE_START", {
+    title: session.title,
+    observedParticipants: participantNames.length,
+  });
+  if (!Array.isArray(participantNames) || participantNames.length === 0) {
+    logIdentityDiagnostic(sessionId, "outlook", "NO_OBSERVED_PARTICIPANTS", {}, "warn");
+    return [];
+  }
   const page = await context.newPage().catch((error) => {
     logIdentityDiagnostic(sessionId, "outlook", "PAGE_CREATE_FAILED", {
       error: error instanceof Error ? error.message : String(error),
@@ -256,19 +292,43 @@ export async function readOutlookMeetingAttendeeEmails(context, session, {
         'a[href*="teams.microsoft.com" i], a[href*="teams.live.com" i], a[href*="teams.cloud.microsoft" i]',
       );
       const joinCount = Math.min(await joinLinks.count().catch(() => 0), 20);
+      let thisDialogMatches = false;
       for (let linkIndex = 0; linkIndex < joinCount; linkIndex += 1) {
         const href = await joinLinks.nth(linkIndex).getAttribute("href").catch(() => null);
         if (teamsJoinIdentity(href) === expectedJoinIdentity) {
           matchedMeeting = true;
+          thisDialogMatches = true;
           break;
         }
       }
-      if (matchedMeeting) mergeEmails(emails, await emailsFromLocator(dialog));
+      if (!thisDialogMatches) continue;
+
+      for (const rawName of participantNames) {
+        const name = typeof rawName === "string" ? rawName.trim() : "";
+        if (!name) continue;
+        const resolved = await emailsForObservedParticipant(dialog, name);
+        if (resolved.length === 1) {
+          emails.add(resolved[0]);
+          logIdentityDiagnostic(sessionId, "outlook", "OBSERVED_PARTICIPANT_RESOLVED", {
+            participant: name,
+          });
+        } else if (resolved.length === 0) {
+          logIdentityDiagnostic(sessionId, "outlook", "OBSERVED_PARTICIPANT_UNRESOLVED", {
+            participant: name,
+          }, "warn");
+        } else {
+          logIdentityDiagnostic(sessionId, "outlook", "OBSERVED_PARTICIPANT_AMBIGUOUS", {
+            participant: name,
+            matches: resolved.length,
+          }, "warn");
+        }
+      }
     }
 
     // Title alone is not an authorization identity: duplicate meeting titles
     // are common. Refuse Outlook-derived emails unless the event's Teams join
-    // URL matches the bot session.
+    // URL matches the bot session. Even after a verified event is found, only
+    // names actually observed in the Teams roster may be resolved to email.
     if (!matchedMeeting) {
       logIdentityDiagnostic(sessionId, "outlook", "JOIN_URL_MISMATCH", {
         dialogs: dialogCount,
@@ -276,12 +336,13 @@ export async function readOutlookMeetingAttendeeEmails(context, session, {
       await captureIdentityScreenshot(page, sessionId, "outlook-join-url-mismatch");
       return [];
     }
-    logIdentityDiagnostic(sessionId, "outlook", emails.size > 0 ? "PROBE_SUCCESS" : "VERIFIED_EVENT_NO_EMAIL", {
+    logIdentityDiagnostic(sessionId, "outlook", emails.size > 0 ? "PROBE_SUCCESS" : "VERIFIED_EVENT_NO_RESOLVED_EMAIL", {
       emails: emails.size,
       dialogs: dialogCount,
+      observedParticipants: participantNames.length,
     }, emails.size > 0 ? "log" : "warn");
     if (emails.size === 0) {
-      await captureIdentityScreenshot(page, sessionId, "outlook-verified-event-no-email");
+      await captureIdentityScreenshot(page, sessionId, "outlook-verified-event-no-resolved-email");
     }
     return [...emails];
   } catch (error) {
