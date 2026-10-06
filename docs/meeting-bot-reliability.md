@@ -189,3 +189,17 @@ The following cannot be proven by unit/type/build CI and must be exercised on th
 - Memory growth during multi-hour continuous recordings.
 
 The finalize endpoint still performs ffmpeg work while holding the per-meeting PostgreSQL transaction/advisory lock. The recorder timeout is now aligned so this no longer creates a false runner failure at two minutes, but moving ffmpeg fully outside the transaction requires a durable FINALIZING state/lock across uploads and recovery. Treat that as a post-staging architecture improvement unless the long-finalize test exposes unacceptable lock pressure or timeouts.
+
+
+## Production hardening added in V9
+
+- Interrupted CAPTURING and STOP_REQUESTED sessions preserve already-uploaded audio as a retryable finalize state instead of making the recording terminal.
+- Finalization now claims a short database lease, freezes new audio publication, runs filesystem and ffmpeg work outside the database transaction, and commits PROCESSING only if the lease is still owned. Stale finalize leases can be reclaimed.
+- Control-plane outages stop Teams capture and make a bounded best-effort finalize attempt before requesting continuation.
+- SIGTERM/SIGINT uses a bounded finalize drain and does not wait for the long post-recording processing loop before process exit.
+- Teams microphone/camera state is verified fail-closed before joining and again after joining; ambiguous aria-pressed state is not treated as proof that media is off.
+- Playwright is a production dependency and CI verifies it is present in a production dependency graph.
+- PulseAudio virtual devices encode their runner PID and startup cleanup only removes modules owned by dead runner processes.
+- Teams profile email extraction is scoped to a profile card matching the participant that was clicked.
+- Recorder JWT lifetime follows the configured maximum meeting duration plus finalize grace, with a bounded maximum lifetime.
+- Saved Teams auth state is required to use owner-only permissions. Optional identity screenshots use owner-only permissions and retention cleanup.
