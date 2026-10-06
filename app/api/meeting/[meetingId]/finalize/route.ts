@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { rm, stat } from "node:fs/promises";
+import { rename, rm, stat } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { resolveMeetingCallerEmail } from "../../_auth";
 import { serializeMeeting } from "@/lib/meeting/serialize";
 import { mergeAudioChunks, splitReadableChunks } from "@/lib/meeting/audio/mergeAudioChunks";
-import { findFullAudio, mergedAudioPath } from "@/lib/meeting/audio/paths";
+import { finalizeWorkAudioPath, findFullAudio, mergedAudioPath } from "@/lib/meeting/audio/paths";
 import {
   acceptsAudio,
   finalizeLeaseStartedAt,
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
 
   const fullCandidate = await findFullAudio(meeting.id);
   const leaseReason = `${FINALIZING_PREFIX}${new Date().toISOString()}`;
+  const finalizeWorkPath = finalizeWorkAudioPath(meeting.id, randomUUID());
   let skippedParts = 0;
 
   try {
@@ -176,7 +178,7 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     if (fullPath && (await splitReadableChunks([fullPath])).readable.length === 1) {
       const encoded = await mergeAudioChunks(
         [fullPath],
-        mergedAudioPath(meeting.id),
+        finalizeWorkPath,
         { allowSingle: true },
       );
       if (!encoded.success) {
@@ -229,7 +231,7 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
         }
         const mergedResult = await mergeAudioChunks(
           split.readable,
-          mergedAudioPath(meeting.id),
+          finalizeWorkPath,
           { allowSingle: true },
         );
         if (!mergedResult.success) {
@@ -263,6 +265,9 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
       });
       if (updated.count !== 1) {
         throw new Error("Finalize lease was lost before the recording could be committed.");
+      }
+      if (merged) {
+        await rename(finalizeWorkPath, mergedAudioPath(meeting.id));
       }
       const fresh = await tx.meeting.findUnique({ where: { id: meeting.id } });
       if (!fresh) throw new Error("Meeting not found after finalization.");
@@ -298,5 +303,7 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
       },
       { status: 500 },
     );
+  } finally {
+    await rm(finalizeWorkPath, { force: true }).catch(() => undefined);
   }
 }
