@@ -31,7 +31,7 @@ export async function resolveMeetingAccess(meeting: Meeting, email: string): Pro
   // links that session to the Meeting, every attendee can open the same live
   // transcript/result without anyone manually sharing it.
   const attendeeSession = await prisma.meetingBotSession.findFirst({
-    where: { meetingId: meeting.id, presentAttendeeEmails: { has: caller } },
+    where: { meetingId: meeting.id, attendeeEmails: { has: caller } },
     select: { id: true },
   });
   return attendeeSession ? "viewer" : null;
