@@ -52,9 +52,6 @@ async function forceToggleOff(page, {
     if (await offButton.isVisible().catch(() => false)) return true;
   }
 
-  const pressed = page.locator(`button[aria-pressed="false"][aria-label*="${kind}" i]`).first();
-  if (await pressed.isVisible().catch(() => false)) return true;
-
   if (required) {
     throw codedError(
       "TEAMS_MEDIA_STATE_UNVERIFIED",
@@ -80,6 +77,9 @@ export async function ensurePreJoinMediaOff(page, { required = true } = {}) {
   return { microphoneOff, cameraOff };
 }
 
+export async function ensureInCallMediaOff(page, { required = true } = {}) {
+  return ensurePreJoinMediaOff(page, { required });
+}
 
 export async function ensurePeoplePanelOpen(page) {
   if (page.isClosed()) return false;
