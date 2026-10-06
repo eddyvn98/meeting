@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
       title: true,
       source: true,
       sourceKey: true,
+      attendeeEmails: true,
     },
   });
   if (staleCaptureSessions.length > 0) {
@@ -133,6 +134,7 @@ export async function POST(req: NextRequest) {
                 source: session.source,
                 sourceKey: continuationKey,
                 scheduledAt: null,
+                attendeeEmails: session.attendeeEmails,
                 errorMessage: "Automatic continuation after the previous runner stopped during capture.",
               },
             });

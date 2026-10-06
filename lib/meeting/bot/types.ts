@@ -48,6 +48,7 @@ export interface MeetingBotSession {
   runnerId: string | null;
   meetingId: string | null;
   participantNames: string[];
+  attendeeEmails: string[];
   speakerObservations: MeetingBotSpeakerObservation[];
   lastHeartbeatAt: string | null;
   errorMessage: string | null;

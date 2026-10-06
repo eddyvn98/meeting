@@ -64,10 +64,17 @@ export interface Meeting {
    *  owns it and shared it out, or is themselves the invited viewer. Powers
    *  the small share icon in MeetingAsideRecentItem.tsx. */
   isShared?: boolean;
-  /** True specifically when the caller is a viewer via share (not the
-   *  owner) — lets the sidebar row read "Shared with you" instead of
-   *  "Shared". */
+  /** True while the linked Teams browser bot is actively CAPTURING this
+   *  occurrence. List UIs use this to open the shared live transcript instead
+   *  of sending attendees to the post-recording processing screen. */
+  isLive?: boolean;
+  /** True when the caller has participant/share access rather than being the
+   *  administrative owner — lets the sidebar avoid owner-only actions. */
   sharedWithMe?: boolean;
+  /** True when access comes only from Teams calendar attendance (no explicit
+   *  MeetingShare). These rows are readable but do not currently have a
+   *  per-user folder-placement record, so the sidebar hides move-to-group. */
+  attendeeOnlyAccess?: boolean;
   /** Sidebar folder this meeting is filed under for the current caller, or
    *  null when ungrouped. For owned meetings this comes from Meeting.groupId;
    *  for shared-with-me rows GET /api/meeting overlays MeetingShare.groupId so
@@ -240,10 +247,9 @@ export interface MeetingDetail extends Meeting {
   bookmarks: Bookmark[];
   /** Null until the summarization step has produced a result. */
   summary: MeetingSummary | null;
-  /** "owner" (rename/delete/manage shares allowed), "editor" (an active
-   *  share grant with role "editor" — also sections/summary/minutes edit),
-   *  or "viewer" (an active grant with role "viewer" — read + ask +
-   *  translate only). See app/api/meeting/_access.ts. */
+  /** "owner" (administrative controls), "editor" (explicit editor share),
+   *  or "viewer" (explicit viewer share OR implicit Teams calendar attendee
+   *  access — read + ask + translate only). See app/api/meeting/_access.ts. */
   accessRole: "owner" | MeetingShareRole;
 }
 

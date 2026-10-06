@@ -10,8 +10,8 @@ import { DEFAULT_STT_LANG, isValidSttLang } from "@/lib/meeting/sttLanguages";
 
 const VALID_STATUSES: MeetingStatus[] = ["UPLOADING", "PROCESSING", "READY", "FAILED"];
 
-/** GET /api/meeting — the caller's own meetings PLUS any meeting shared with
- *  them via an active (unrevoked, unexpired) MeetingShare grant — newest
+/** GET /api/meeting — the caller's own meetings PLUS calendar-backed Teams
+ *  rooms where they are an attendee PLUS explicit active MeetingShare grants — newest
  *  first, for the Home screen's "Recent Meetings" list, the left sidebar's
  *  Recent list, and the "Meetings" nav page. No nested transcript/summary
  *  payload — see GET /api/meeting/[meetingId] for that.
@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q")?.trim();
   const dateParam = req.nextUrl.searchParams.get("date")?.trim();
   const now = new Date();
+  const callerEmail = email.trim().toLowerCase();
 
   const activeShares = await prisma.meetingShare.findMany({
     where: {
@@ -43,8 +44,20 @@ export async function GET(req: NextRequest) {
   const sharedMeetingIds = activeShares.map((s) => s.meetingId);
   const sharedGroupByMeeting = new Map(activeShares.map((s) => [s.meetingId, s.groupId]));
 
+  // A calendar attendee is a natural member of the Teams room. The bot
+  // session is linked to the Meeting as soon as capture starts, so the live
+  // Meeting appears in every attendee's list without creating MeetingShare
+  // rows or making the inviter special.
+  const attendeeSessions = await prisma.meetingBotSession.findMany({
+    where: { meetingId: { not: null }, attendeeEmails: { has: callerEmail } },
+    select: { meetingId: true },
+  });
+  const attendeeMeetingIds = attendeeSessions.flatMap((session) => session.meetingId ? [session.meetingId] : []);
+  const attendeeMeetingIdSet = new Set(attendeeMeetingIds);
+  const accessibleMeetingIds = [...new Set([...sharedMeetingIds, ...attendeeMeetingIds])];
+
   const where: Prisma.MeetingWhereInput = {
-    OR: [{ ownerEmail: { equals: email, mode: "insensitive" } }, { id: { in: sharedMeetingIds } }],
+    OR: [{ ownerEmail: { equals: email, mode: "insensitive" } }, { id: { in: accessibleMeetingIds } }],
   };
 
   if (q) {
@@ -64,7 +77,7 @@ export async function GET(req: NextRequest) {
     where.createdAt = { gte: start, lt: end };
   }
 
-  const [meetings, activeShareMeetingIds] = await Promise.all([
+  const [meetings, activeShareMeetingIds, liveBotSessions] = await Promise.all([
     prisma.meeting.findMany({ where, orderBy: { createdAt: "desc" } }),
     // Which of the caller's OWN meetings have at least one active share out
     // — powers the sidebar's "shared" icon for the owner's side too.
@@ -77,24 +90,38 @@ export async function GET(req: NextRequest) {
       select: { meetingId: true },
       distinct: ["meetingId"],
     }),
+    prisma.meetingBotSession.findMany({
+      where: { status: "CAPTURING", meetingId: { not: null } },
+      select: { meetingId: true },
+    }),
   ]);
+  const liveMeetingIds = new Set(liveBotSessions.flatMap((session) => session.meetingId ? [session.meetingId] : []));
   const ownedAndShared = new Set(activeShareMeetingIds.map((s) => s.meetingId));
   const sharedWithMeSet = new Set(
     meetings
-      .filter((m) => m.ownerEmail.toLowerCase() !== email.toLowerCase() && sharedGroupByMeeting.has(m.id))
+      .filter((m) =>
+        m.ownerEmail.toLowerCase() !== callerEmail &&
+        (sharedGroupByMeeting.has(m.id) || attendeeMeetingIdSet.has(m.id))
+      )
       .map((m) => m.id),
   );
 
   return NextResponse.json(
     meetings.map((m) => {
       const sharedWithMe = sharedWithMeSet.has(m.id);
+      const attendeeOnlyAccess =
+        m.ownerEmail.toLowerCase() !== callerEmail &&
+        attendeeMeetingIdSet.has(m.id) &&
+        !sharedGroupByMeeting.has(m.id);
       return {
         ...serializeMeeting(m),
         // A shared recipient's folder placement is personal. Never leak the
         // owner's Meeting.groupId into the recipient's sidebar.
         groupId: sharedWithMe ? (sharedGroupByMeeting.get(m.id) ?? null) : m.groupId,
         isShared: ownedAndShared.has(m.id) || sharedWithMe,
+        isLive: liveMeetingIds.has(m.id),
         sharedWithMe,
+        attendeeOnlyAccess,
       };
     }),
   );

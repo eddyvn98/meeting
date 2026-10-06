@@ -216,9 +216,16 @@ export function MeetingHome() {
 												<FileText className="h-4 w-4" />
 											</span>
 											<div className="min-w-0">
-												<p className="truncate text-sm font-medium text-foreground">
-													{meeting.title}
-												</p>
+												<div className="flex items-center gap-2">
+													<p className="truncate text-sm font-medium text-foreground">
+														{meeting.title}
+													</p>
+													{meeting.isLive && (
+														<span className="shrink-0 rounded-full bg-red-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
+															Live
+														</span>
+													)}
+												</div>
 												<p className="text-xs text-muted-foreground">
 													{formatDateLabel(meeting.createdAt)}
 													{meeting.durationSec

@@ -18,7 +18,7 @@ Employee creates a Teams meeting
 
 The bot mailbox is an **invite inbox and calendar**, not the owner of meeting results.
 
-The meeting result belongs to the allowed organizer who invited the bot.
+The organizer is stored as the administrative `ownerEmail`, but the meeting content is a **shared room for the calendar occurrence**. Every signed-in attendee whose email is present on the Graph event gets viewer access to the same live transcript and the same post-meeting Overview, Transcript and Minutes. See `docs/shared-teams-meeting-room.md`.
 
 ## Shared mailbox
 
@@ -170,11 +170,12 @@ Every Graph synchronization:
 4. Reads `organizer`, `attendees`, `isOrganizer`, response status and Teams join information.
 5. Requires the configured bot mailbox to be an attendee.
 6. Requires the organizer's domain to be allowed.
-7. Uses the organizer email as `ownerEmail` for the generated Meeting.
-8. Ignores declined, cancelled, all-day or non-Teams events.
-9. Reconciles reschedules and deletions so stale queued bot joins are removed.
-10. Keeps recurring meeting occurrences independent.
-11. Refreshes expired Graph tokens and retries temporary throttling/service failures.
+7. Stores the organizer email as administrative `ownerEmail`.
+8. Stores attendee emails (excluding the bot mailbox) on the occurrence's `MeetingBotSession` for implicit shared-room viewer access.
+9. Ignores declined, cancelled, all-day or non-Teams events.
+10. Reconciles reschedules and deletions so stale queued bot joins are removed.
+11. Keeps recurring meeting occurrences independent.
+12. Refreshes expired Graph tokens and retries temporary throttling/service failures.
 
 ## Recurring meetings
 
@@ -192,29 +193,20 @@ Attendees:
 
 Graph `calendarView` expands the recurring series into occurrences. Each occurrence creates one bot join near its own start time.
 
-## Ownership example
+## Shared-room example
 
 Alice creates:
 
 ```text
 Weekly Review
 Organizer: alice@company.com
-Attendee: meetingbot@company.com
+Attendees:
+- bob@company.com
+- carol@company.com
+- meetingbot@company.com
 ```
 
-The bot mailbox receives the meeting, but the generated Meeting session is owned by:
-
-```text
-alice@company.com
-```
-
-not by:
-
-```text
-meetingbot@company.com
-```
-
-That keeps the transcript, summary, minutes and action items associated with the person who requested the bot.
+The generated Meeting keeps `alice@company.com` as its administrative owner, while Alice, Bob and Carol all open the **same** Meeting record and live transcript. Nobody needs to manually share the meeting with the other calendar attendees. Explicit `MeetingShare` remains available for people who were not on the Teams calendar occurrence or for editor upgrades.
 
 ## Internal web scheduler remains available
 

@@ -5,6 +5,7 @@ export type CalendarSyncEvent = {
   scheduledAt?: unknown;
   ownerEmail?: unknown;
   organizerEmail?: unknown;
+  attendeeEmails?: unknown;
   organizerAllowed?: unknown;
   invited?: unknown;
   cancelled?: unknown;
@@ -23,6 +24,20 @@ export function canonicalEmail(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const email = value.trim().toLowerCase();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
+export function sanitizeCalendarAttendeeEmails(value: unknown, max = 300): string[] {
+  if (!Array.isArray(value)) return [];
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const email = canonicalEmail(item);
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    result.push(email);
+    if (result.length >= max) break;
+  }
+  return result;
 }
 
 export function cleanCalendarSyncKey(value: unknown, max = 512): string | null {
