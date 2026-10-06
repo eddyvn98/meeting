@@ -136,7 +136,7 @@ export function createMeetingRecorderRuntime({
     }).catch(() => null);
   }
 
-  async function finish(recorder) {
+  async function finish(recorder, { timeoutMs = 11 * 60_000 } = {}) {
     if (!isAlive(recorder)) throw codedError("RECORDER_CRASHED", "Recorder browser closed before finalization.");
     const endButton = recorder.page.getByRole("button", { name: /End Meeting/i }).first();
     if (!(await endButton.isVisible().catch(() => false))) {
@@ -146,7 +146,7 @@ export function createMeetingRecorderRuntime({
       (response) =>
         response.request().method() === "POST" &&
         /\/api\/meeting\/[^/]+\/finalize$/.test(new URL(response.url()).pathname),
-      { timeout: 11 * 60_000 },
+      { timeout: timeoutMs },
     );
     await endButton.click();
     const response = await finalizeResponse;
