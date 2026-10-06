@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
     where.createdAt = { gte: start, lt: end };
   }
 
-  const [meetings, activeShareMeetingIds] = await Promise.all([
+  const [meetings, activeShareMeetingIds, liveBotSessions] = await Promise.all([
     prisma.meeting.findMany({ where, orderBy: { createdAt: "desc" } }),
     // Which of the caller's OWN meetings have at least one active share out
     // — powers the sidebar's "shared" icon for the owner's side too.
@@ -90,7 +90,12 @@ export async function GET(req: NextRequest) {
       select: { meetingId: true },
       distinct: ["meetingId"],
     }),
+    prisma.meetingBotSession.findMany({
+      where: { status: "CAPTURING", meetingId: { not: null } },
+      select: { meetingId: true },
+    }),
   ]);
+  const liveMeetingIds = new Set(liveBotSessions.flatMap((session) => session.meetingId ? [session.meetingId] : []));
   const ownedAndShared = new Set(activeShareMeetingIds.map((s) => s.meetingId));
   const sharedWithMeSet = new Set(
     meetings
@@ -110,6 +115,7 @@ export async function GET(req: NextRequest) {
         // owner's Meeting.groupId into the recipient's sidebar.
         groupId: sharedWithMe ? (sharedGroupByMeeting.get(m.id) ?? null) : m.groupId,
         isShared: ownedAndShared.has(m.id) || sharedWithMe,
+        isLive: liveMeetingIds.has(m.id),
         sharedWithMe,
       };
     }),
