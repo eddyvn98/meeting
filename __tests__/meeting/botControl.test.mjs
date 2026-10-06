@@ -108,6 +108,32 @@ describe("meeting bot session control", () => {
     heartbeat.stop();
   });
 
+  it("finishes ENDED after a concurrent stop request instead of leaving STOP_REQUESTED stale", async () => {
+    const conflict = Object.assign(new Error("Stale bot lifecycle update."), { status: 409 });
+    let call = 0;
+    const emit = vi.fn(async (_sessionId, status, extra) => {
+      call += 1;
+      if (call === 1) throw conflict;
+      return { status, runnerId: "runner-a", expectedStatus: extra.expectedStatus };
+    });
+    const api = vi.fn(async () => ({
+      status: "STOP_REQUESTED",
+      runnerId: "runner-a",
+    }));
+    const control = createSessionControl({ api, emit, runnerId: "runner-a" });
+    const heartbeat = control.createHeartbeat("session-1");
+
+    await expect(heartbeat.update("ENDED")).resolves.toMatchObject({ status: "ENDED" });
+    heartbeat.stop();
+
+    expect(emit).toHaveBeenNthCalledWith(
+      2,
+      "session-1",
+      "ENDED",
+      expect.objectContaining({ expectedStatus: "STOP_REQUESTED" }),
+    );
+  });
+
   it("does not advance acknowledged lifecycle state after a failed write", async () => {
     const calls = [];
     let attempt = 0;
