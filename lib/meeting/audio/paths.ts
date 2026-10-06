@@ -8,7 +8,7 @@
  * chunks/route.ts's doc comment for why).
  */
 
-import { readdir } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 export const MEETING_AUDIO_ROOT = join(process.cwd(), "data", "meeting-audio");
@@ -28,7 +28,24 @@ export function mergedAudioPath(meetingId: string): string {
  *  (`full.<ext>`, extension from the browser's own format). Unlike the merged
  *  chunks it has no joins, so it plays without dropouts. null when none. */
 export async function findFullAudio(meetingId: string): Promise<string | null> {
-  const names = await readdir(meetingAudioDir(meetingId)).catch(() => [] as string[]);
-  const name = names.find((n) => n.startsWith("full.") && !n.endsWith(".uploading"));
-  return name ? join(meetingAudioDir(meetingId), name) : null;
+  const dir = meetingAudioDir(meetingId);
+  const names = await readdir(dir).catch(() => [] as string[]);
+  const candidates = names.filter(
+    (name) => name.startsWith("full.") && !name.endsWith(".uploading"),
+  );
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return join(dir, candidates[0]);
+
+  // Older versions could leave multiple full.<ext> files after a retry from
+  // another browser/codec. Prefer the newest successfully published file so
+  // finalize/playback never pick an arbitrary stale recording.
+  const dated = await Promise.all(
+    candidates.map(async (name) => ({
+      name,
+      mtimeMs: (await stat(join(dir, name)).catch(() => null))?.mtimeMs ?? -1,
+    })),
+  );
+  dated.sort((a, b) => b.mtimeMs - a.mtimeMs || a.name.localeCompare(b.name));
+  const newest = dated.find((entry) => entry.mtimeMs >= 0);
+  return newest ? join(dir, newest.name) : null;
 }

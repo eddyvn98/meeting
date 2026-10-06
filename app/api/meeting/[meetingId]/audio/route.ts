@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveMeetingCallerEmail } from "../../_auth";
 import { resolveMeetingAccess } from "../../_access";
 import { findFullAudio, mergedAudioPath } from "@/lib/meeting/audio/paths";
+import { parseSingleByteRange } from "@/lib/meeting/audio/httpRange";
 
 /**
  * GET /api/meeting/[meetingId]/audio — streams the meeting's recorded audio
@@ -94,25 +95,18 @@ export async function GET(req: NextRequest, { params }: { params: { meetingId: s
     });
   }
 
-  const match = /bytes=(\d*)-(\d*)/.exec(range);
-  let start: number;
-  let end: number;
-  if (match?.[1]) {
-    // `bytes=START-` or `bytes=START-END`.
-    start = Number(match[1]);
-    end = match[2] ? Number(match[2]) : fileStat.size - 1;
-  } else if (match?.[2]) {
-    // Suffix range `bytes=-N` (RFC 7233 §2.1): the last N bytes of the
-    // file — `match[1]` is empty here, so treating that as `start = 0`
-    // (the old behavior) served the FIRST N bytes instead, breaking
-    // end-of-file seeking (e.g. players seeking near the end/duration).
-    const suffixLength = Number(match[2]);
-    start = Math.max(0, fileStat.size - suffixLength);
-    end = fileStat.size - 1;
-  } else {
-    start = 0;
-    end = fileStat.size - 1;
+  const parsedRange = parseSingleByteRange(range, fileStat.size);
+  if (!parsedRange) {
+    return new NextResponse(null, {
+      status: 416,
+      headers: {
+        "Content-Range": `bytes */${fileStat.size}`,
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "private, max-age=3600",
+      },
+    });
   }
+  const { start, end } = parsedRange;
   const stream = Readable.toWeb(createReadStream(filePath, { start, end })) as ReadableStream;
 
   return new NextResponse(stream, {
