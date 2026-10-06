@@ -499,12 +499,17 @@ export function createBotSessionRunner(config) {
       const timedOut = await recorderRuntime.waitForProcessing(
         recorder, session, heartbeat, recordedMs,
       );
-      await heartbeat.update("ENDED", {
-        meetingId: recorder.meetingId,
-        errorMessage: timedOut
-          ? "Processing timed out; the meeting was force-completed with a placeholder result."
-          : exitMessage ?? undefined,
-      });
+      if (timedOut) {
+        await heartbeat.update("FAILED", {
+          meetingId: recorder.meetingId,
+          errorMessage: "Processing timed out. The recording was preserved and can be retried.",
+        });
+      } else {
+        await heartbeat.update("ENDED", {
+          meetingId: recorder.meetingId,
+          errorMessage: exitMessage ?? undefined,
+        });
+      }
     } catch (error) {
       const code = errorCode(error);
       const errorMessage = error instanceof Error ? error.message : String(error);
