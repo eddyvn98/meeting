@@ -66,7 +66,13 @@ export async function readTeamsParticipantEmails(page, {
     const name = typeof rawName === "string" ? rawName.trim() : "";
     if (!name) continue;
 
-    const rowText = page.getByText(name, { exact: true }).first();
+    const rosterScoped = await roster.isVisible().catch(() => false)
+      ? roster.getByText(name, { exact: true }).first()
+      : null;
+    const rowText =
+      rosterScoped && await rosterScoped.isVisible().catch(() => false)
+        ? rosterScoped
+        : page.getByText(name, { exact: true }).first();
     if (!await rowText.isVisible().catch(() => false)) continue;
 
     probed += 1;
