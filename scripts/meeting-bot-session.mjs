@@ -58,7 +58,7 @@ export function createBotSessionRunner(config) {
       ...(browserExecutable ? { executablePath: browserExecutable } : {}),
       headless,
       args: [
-        "--no-sandbox",
+        ...(process.env.MEETING_BOT_DISABLE_CHROMIUM_SANDBOX === "true" ? ["--no-sandbox"] : []),
         "--disable-dev-shm-usage",
         "--disable-notifications",
       ],
