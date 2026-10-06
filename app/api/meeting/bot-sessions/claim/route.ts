@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { serializeMeetingBotSession } from "@/lib/meeting/bot/serialize";
 import type { MeetingBotStatus } from "@/lib/meeting/bot/types";
 import { isBotRunnerRequest, runnerId } from "../_auth";
-import { applyMockComplete } from "@/lib/meeting/processing/applyMockComplete";
 
 export const runtime = "nodejs";
 
@@ -186,12 +185,11 @@ export async function POST(req: NextRequest) {
 async function recoverStaleProcessingMeetings(now: Date): Promise<void> {
   const staleMs = envDuration("MEETING_PROCESSING_STALE_MS", DEFAULT_PROCESSING_STALE_MS);
   const staleBefore = new Date(now.getTime() - staleMs);
-  const staleMeetings = await prisma.meeting.findMany({
+  await prisma.meeting.updateMany({
     where: { status: "PROCESSING", updatedAt: { lt: staleBefore } },
+    data: {
+      status: "FAILED",
+      failureReason: "Processing stalled. The original recording is preserved; retry processing from the meeting.",
+    },
   });
-  for (const meeting of staleMeetings) {
-    await applyMockComplete(meeting).catch((err) => {
-      console.error(`[meeting] recoverStaleProcessingMeetings failed for ${meeting.id}:`, err instanceof Error ? err.message : err);
-    });
-  }
 }
