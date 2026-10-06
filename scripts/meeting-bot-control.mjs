@@ -4,17 +4,33 @@ export function createSessionControl({ api, emit, runnerId }) {
   function createHeartbeat(sessionId) {
     let status = "CLAIMED";
     let extra = {};
+    let stopped = false;
+    let queue = Promise.resolve();
+
+    const send = (nextStatus, nextExtra = {}, { remember = true } = {}) => {
+      const expectedStatus = status;
+      if (remember) {
+        status = nextStatus;
+        extra = nextExtra;
+      }
+      const run = queue.then(() =>
+        emit(sessionId, nextStatus, { ...nextExtra, expectedStatus }),
+      );
+      queue = run.catch(() => undefined);
+      return run;
+    };
+
     const timer = setInterval(() => {
-      void emit(sessionId, status, extra).catch(() => undefined);
+      if (stopped) return;
+      void send(status, extra, { remember: false }).catch(() => undefined);
     }, 15_000);
 
     return {
       update(nextStatus, nextExtra = {}) {
-        status = nextStatus;
-        extra = nextExtra;
-        return emit(sessionId, status, extra);
+        return send(nextStatus, nextExtra);
       },
       stop() {
+        stopped = true;
         clearInterval(timer);
       },
     };
