@@ -6,6 +6,7 @@ import { DEFAULT_TRANSLATE_LANG, TRANSLATE_LANG_STORAGE_KEY, TRANSLATE_MODE_STOR
 import { buildSummaryTranslationLines, type TranslatedItemFields, type TranslatedSectionFields, type TranslatedSummaryFields } from "@/lib/meeting/translateSummary";
 import { joinBilingual } from "@/lib/meeting/bilingualText";
 import { isOverviewVisibleKind } from "@/lib/meeting/overviewSections";
+import { readLiveTranslationStream } from "@/lib/meeting/stt/liveTranslationStream";
 import type { TranscriptLanguageMode } from "./components/MeetingTranslationToggle";
 
 interface TranslateResponse {
@@ -179,11 +180,18 @@ export function useMeetingTranslation(meetingId: string, segments: TranscriptSeg
         body: JSON.stringify({ text: segment.textEn ?? segment.textVi, targetLanguage: targetLang }),
       }).then(async (response) => {
         if (!response.ok) return;
-        const data = await response.json() as { translated?: string };
-        if (!data.translated || currentKeyRef.current !== cacheKey(meetingId, targetLang)) return;
-        setSegmentOverrides((previous) => ({ ...previous, [segment.id]: data.translated! }));
+        let translated = "";
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("text/event-stream")) {
+          translated = await readLiveTranslationStream(response, () => undefined);
+        } else {
+          const data = await response.json() as { translated?: string };
+          translated = data.translated?.trim() ?? "";
+        }
+        if (!translated || currentKeyRef.current !== cacheKey(meetingId, targetLang)) return;
+        setSegmentOverrides((previous) => ({ ...previous, [segment.id]: translated }));
         const cache = translationCache.get(currentKeyRef.current) ?? { segmentOverrides: {}, summaryOverride: null, signatures: EMPTY_SIGNATURES };
-        translationCache.set(currentKeyRef.current, { ...cache, segmentOverrides: { ...cache.segmentOverrides, [segment.id]: data.translated! } });
+        translationCache.set(currentKeyRef.current, { ...cache, segmentOverrides: { ...cache.segmentOverrides, [segment.id]: translated } });
       }).catch(() => undefined).finally(() => liveInFlightRef.current.delete(key));
     }
   }, [segments, languageMode, targetLang, meetingId]);
