@@ -74,21 +74,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsedSchedule.error }, { status: 400 });
   }
 
-  const existing = await prisma.meetingBotSession.findFirst({
-    where: { ownerEmail: email, meetingUrl: normalizedMeetingUrl, status: { in: ACTIVE_STATUSES } },
-    orderBy: { createdAt: "desc" },
-  });
-  if (existing) return NextResponse.json(serializeMeetingBotSession(existing), { status: 200 });
+  const result = await prisma.$transaction(async (tx) => {
+    // The UI can double-submit and two browser tabs can enqueue the same URL
+    // at the same time. Serialize the read+create pair so both callers get
+    // the same active session instead of creating two bots for one meeting.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-bot-manual:${email}:${normalizedMeetingUrl}`}))`;
 
-  const session = await prisma.meetingBotSession.create({
-    data: {
-      ownerEmail: email,
-      meetingUrl: normalizedMeetingUrl,
-      title: serializeTitle(body.title),
-      scheduledAt: parsedSchedule.scheduledAt,
-    },
+    const existing = await tx.meetingBotSession.findFirst({
+      where: { ownerEmail: email, meetingUrl: normalizedMeetingUrl, status: { in: ACTIVE_STATUSES } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (existing) return { session: existing, created: false };
+
+    const session = await tx.meetingBotSession.create({
+      data: {
+        ownerEmail: email,
+        meetingUrl: normalizedMeetingUrl,
+        title: serializeTitle(body.title),
+        scheduledAt: parsedSchedule.scheduledAt,
+      },
+    });
+    return { session, created: true };
   });
-  return NextResponse.json(serializeMeetingBotSession(session), { status: 201 });
+
+  return NextResponse.json(
+    serializeMeetingBotSession(result.session),
+    { status: result.created ? 201 : 200 },
+  );
 }
 
 /** Clears every finished session for the caller; active sessions are never touched. */
