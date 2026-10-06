@@ -236,6 +236,7 @@ export interface MeetingDetail extends Meeting {
   transcriptSegments: TranscriptSegment[];
   speakers: Speaker[];
   speakerMappings: SpeakerMapping[];
+  participantNames: string[];
   bookmarks: Bookmark[];
   /** Null until the summarization step has produced a result. */
   summary: MeetingSummary | null;
