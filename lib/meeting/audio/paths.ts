@@ -8,7 +8,7 @@
  * chunks/route.ts's doc comment for why).
  */
 
-import { readdir } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 export const MEETING_AUDIO_ROOT = join(process.cwd(), "data", "meeting-audio");
@@ -37,7 +37,18 @@ export function finalizeWorkAudioPath(meetingId: string, finalizeId: string): st
  *  (`full.<ext>`, extension from the browser's own format). Unlike the merged
  *  chunks it has no joins, so it plays without dropouts. null when none. */
 export async function findFullAudio(meetingId: string): Promise<string | null> {
-  const names = await readdir(meetingAudioDir(meetingId)).catch(() => [] as string[]);
-  const name = names.find((n) => n.startsWith("full.") && !n.endsWith(".uploading"));
-  return name ? join(meetingAudioDir(meetingId), name) : null;
+  const dir = meetingAudioDir(meetingId);
+  const names = await readdir(dir).catch(() => [] as string[]);
+  const candidates = names
+    .filter((name) => name.startsWith("full.") && !name.endsWith(".uploading"))
+    .map((name) => join(dir, name));
+  if (candidates.length === 0) return null;
+  const withStats = await Promise.all(
+    candidates.map(async (path) => ({
+      path,
+      mtimeMs: (await stat(path).catch(() => null))?.mtimeMs ?? -1,
+    })),
+  );
+  withStats.sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path));
+  return withStats[0]?.mtimeMs >= 0 ? withStats[0].path : null;
 }
