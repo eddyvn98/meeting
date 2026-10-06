@@ -37,7 +37,7 @@ Any unrecoverable infrastructure failure may end at FAILED.
 | Recorder browser crashes | Current session fails and an idempotent continuation session is queued. |
 | Runner dies before CAPTURING | Expired lease returns the session to REQUESTED. |
 | Runner dies during CAPTURING | After the longer capture lease expires, the old session becomes FAILED and one bounded continuation is queued. |
-| App/API temporarily unavailable | Runner claim loop retries instead of exiting; heartbeat calls are best-effort. |
+| App/API temporarily unavailable | Runner tolerates a short outage, then stops/finalizes capture after MEETING_BOT_CONTROL_OUTAGE_GRACE_MS rather than recording indefinitely without control-plane ownership. |
 | Graph outage causes an old occurrence to arrive late | CALENDAR late-grace marks it missed instead of joining much later. |
 | Web schedule and Graph describe the same occurrence | URL/time dedupe and advisory lock allow one bot session. |
 | Bot joins before everyone else | Initial-alone grace keeps it waiting for a late start. |
@@ -46,7 +46,10 @@ Any unrecoverable infrastructure failure may end at FAILED.
 | Audio track exists but is silent | Browser RMS health monitor detects prolonged silence. |
 | Silent audio while >1 participant is present | Teams audio route is reconnected once per recovery cooldown. |
 | Meeting exceeds max duration | Bot ends and finalizes at the configured safety ceiling. |
+| Finalize/ffmpeg is slow | Recorder waits up to 11 minutes for finalize, exceeding the server's 10-minute transaction budget so a slow but valid finalize is not falsely marked failed by the runner. |
 | Post-processing browser is slow | Processing wait has a bounded timeout and recovery fallback. |
+| Runner receives SIGTERM/SIGINT | Runner stops claiming new work; JOINING/LOBBY sessions exit and active CAPTURING sessions finalize before process drain. |
+| Teams SPA keeps stale lobby/error text in hidden DOM | A visible in-call Leave/End control wins over body-text heuristics. |
 
 ## Default recovery windows
 
@@ -57,6 +60,7 @@ MEETING_BOT_REJOIN_WINDOW_MS=120000
 MEETING_BOT_REJOIN_ATTEMPT_MS=30000
 MEETING_BOT_MAX_CONTINUATIONS=2
 MEETING_BOT_CAPTURE_LEASE_TIMEOUT_MS=300000
+MEETING_BOT_CONTROL_OUTAGE_GRACE_MS=60000
 MEETING_BOT_INITIAL_ALONE_GRACE_MS=900000
 
 MEETING_BOT_AUDIO_INITIAL_SIGNAL_MS=60000
@@ -150,5 +154,38 @@ Run these on a real Linux runner and Teams tenant before calling the deployment 
 16. Restart the runner during capture.
 17. Leave the bot alone until the alone timeout.
 18. Run two unrelated meetings concurrently up to MEETING_BOT_MAX_CONCURRENCY.
+19. Send SIGTERM while the bot is in JOINING/LOBBY; confirm it leaves without waiting for the full lobby timeout.
+20. Send SIGTERM during CAPTURING; confirm capture is finalized and no new session is claimed.
+21. Block the Meeting API for less than MEETING_BOT_CONTROL_OUTAGE_GRACE_MS and restore it; capture should continue.
+22. Block the Meeting API longer than MEETING_BOT_CONTROL_OUTAGE_GRACE_MS; the runner must stop capture rather than continue unmanaged.
+23. Use a long recording or deliberately slow ffmpeg so finalize approaches several minutes; confirm the runner does not false-fail at the old 2-minute boundary.
+24. Invite a user who never joins Teams; confirm that invited user still receives shared transcript access, per product policy.
+25. Verify a recorder token cannot list all meetings, access another meeting, create shares/comments/public links, or mutate voice profiles.
+26. Exercise the Teams page with stale lobby/removal/reconnect copy while already joined; visible in-call controls must keep state JOINED.
 
 For every case confirm both the bot-session terminal state and the recorded Meeting result/audio.
+
+## Pre-staging security invariants
+
+These are release blockers, not best-effort checks:
+
+- A recorder token may create exactly one Meeting for its claimed bot session.
+- After binding, that token may access only the recorder/STT/diarization endpoints for that Meeting plus read-only voice-profile seeds and stateless live translation.
+- The recorder token must not administer bot sessions/schedules, list the owner's meetings, access another Meeting, or create shares/comments/public links.
+- Recorder session tokens expire after six hours.
+- Calendar/Outlook invitees retain shared transcript access even if they never join the live Teams call; this is intentional product behavior.
+- Chromium sandboxing stays enabled by default in production.
+- A runner that loses control-plane reachability beyond the configured grace period must fail closed rather than record indefinitely.
+
+## Known staging-only validation
+
+The following cannot be proven by unit/type/build CI and must be exercised on the deployed Linux runner/real Teams tenant:
+
+- Microsoft Teams DOM/wording changes and tenant-specific lobby behavior.
+- PulseAudio/PipeWire routing, silence recovery and browser audio device behavior.
+- Saved Microsoft session expiry/MFA/conditional-access behavior.
+- Long ffmpeg finalize under the staging machine's actual CPU/disk performance.
+- Real network interruption, process restart and OS signal handling.
+- Memory growth during multi-hour continuous recordings.
+
+The finalize endpoint still performs ffmpeg work while holding the per-meeting PostgreSQL transaction/advisory lock. The recorder timeout is now aligned so this no longer creates a false runner failure at two minutes, but moving ffmpeg fully outside the transaction requires a durable FINALIZING state/lock across uploads and recovery. Treat that as a post-staging architecture improvement unless the long-finalize test exposes unacceptable lock pressure or timeouts.
