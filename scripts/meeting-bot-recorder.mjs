@@ -172,14 +172,14 @@ export function createMeetingRecorderRuntime({
         const response = await requestContext.get(meetingUrl);
         if (response.ok()) {
           const data = await response.json();
-          if (data?.status === "FAILED") return false;
+          if (data?.status === "FAILED") return "FAILED";
           if (data?.status === "READY") {
             readySeenAt ??= Date.now();
             const diarizationStatus = await recorder.page.evaluate(() => {
               return window.__meetingDiarizationStatus ?? null;
             }).catch(() => null);
-            if (diarizationStatus === "done" || diarizationStatus === "failed") return false;
-            if (diarizationStatus === null && Date.now() - readySeenAt >= 10_000) return false;
+            if (diarizationStatus === "done" || diarizationStatus === "failed") return "READY";
+            if (diarizationStatus === null && Date.now() - readySeenAt >= 10_000) return "READY";
           }
         }
       } catch {
@@ -192,13 +192,13 @@ export function createMeetingRecorderRuntime({
       console.log(
         `[meeting-bot] session ${session.id} diarization did not finish before the processing timeout; keeping the usable READY transcript.`,
       );
-      return false;
+      return "READY";
     }
 
     console.error(
       `[meeting-bot] session ${session.id} processing timed out after ${timeoutMs}ms; preserving audio and marking the run retryable.`,
     );
-    return true;
+    return "TIMEOUT";
   }
 
   async function dispose(recorder) {
