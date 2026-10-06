@@ -6,6 +6,7 @@ import {
   nextMeetingScheduleRun,
 } from "@/lib/meeting/bot/recurrence";
 import { sameBotOccurrence } from "@/lib/meeting/bot/sessionKeys";
+import { teamsMeetingIdentity } from "@/lib/meeting/bot/teamsUrl";
 
 export const runtime = "nodejs";
 
@@ -63,11 +64,11 @@ export async function POST(req: NextRequest) {
       }
 
       const sourceKey = `${schedule.id}:${occurrence.toISOString()}`;
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-bot:${schedule.meetingUrl}`}))`;
+      const meetingIdentity = teamsMeetingIdentity(schedule.meetingUrl) ?? schedule.meetingUrl;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-bot:${meetingIdentity}`}))`;
 
-      const conflict = await tx.meetingBotSession.findFirst({
+      const conflictCandidates = await tx.meetingBotSession.findMany({
         where: {
-          meetingUrl: schedule.meetingUrl,
           status: { not: "FAILED" },
           NOT: {
             source: "SCHEDULE",
@@ -79,13 +80,16 @@ export async function POST(req: NextRequest) {
           },
         },
         orderBy: { requestedAt: "asc" },
+        take: 100,
       });
+      const conflict = conflictCandidates.find(
+        (session) => teamsMeetingIdentity(session.meetingUrl) === teamsMeetingIdentity(schedule.meetingUrl),
+      ) ?? null;
 
       let continuationConflict = null;
       if (!conflict) {
         const continuations = await tx.meetingBotSession.findMany({
           where: {
-            meetingUrl: schedule.meetingUrl,
             status: { not: "FAILED" },
             scheduledAt: null,
             sourceKey: { contains: ":continuation:" },
@@ -98,6 +102,7 @@ export async function POST(req: NextRequest) {
           take: 50,
         });
         continuationConflict = continuations.find((session) =>
+          teamsMeetingIdentity(session.meetingUrl) === teamsMeetingIdentity(schedule.meetingUrl) &&
           sameBotOccurrence(session.sourceKey, occurrence),
         ) ?? null;
       }
