@@ -37,6 +37,7 @@ const ROSTER_PERSIST_MS = 30_000;
 const IDENTITY_PROBE_MS = 60_000;
 const MAX_SPEAKER_OBSERVATIONS = 5_000;
 export function createBotSessionRunner(config) {
+  let identityStorageState = config.identityStorageState;
   const {
     api, emit, recorderRuntime, runnerId, teamsDisplayName,
     browserChannel, browserExecutable, headless, pollMs,
@@ -44,6 +45,34 @@ export function createBotSessionRunner(config) {
     aloneTimeoutMs, initialAloneGraceMs, maxDurationMs, audioInitialWarnMs, audioSilenceWarnMs,
   } = config;
   const control = createSessionControl({ api, emit, runnerId });
+
+  function setIdentityStorageState(value) {
+    identityStorageState = value || undefined;
+  }
+
+  async function launchIdentityRuntime(storageState) {
+    if (!storageState) return null;
+    const browser = await chromium.launch({
+      ...(browserChannel ? { channel: browserChannel } : {}),
+      ...(browserExecutable ? { executablePath: browserExecutable } : {}),
+      headless,
+      args: [
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-notifications",
+      ],
+    });
+    const context = await browser.newContext({
+      storageState,
+      viewport: { width: 1440, height: 1000 },
+    });
+    return { browser, context };
+  }
+
+  async function closeIdentityRuntime(runtime) {
+    await runtime?.context.close().catch(() => undefined);
+    await runtime?.browser.close().catch(() => undefined);
+  }
   async function launchTeams(sinkName, storageState) {
     const browser = await chromium.launch({
       ...(browserChannel ? { channel: browserChannel } : {}),
@@ -105,6 +134,7 @@ export function createBotSessionRunner(config) {
     const heartbeat = control.createHeartbeat(session.id);
     let sink;
     let teamsRuntime;
+    let identityRuntime;
     let recorder;
     let exitMessage = null;
     try {
@@ -142,6 +172,7 @@ export function createBotSessionRunner(config) {
       let identityProbeAttempts = 0;
       let identityWarningIssued = false;
       let identityDirty = false;
+      let nextOutlookProbeAt = 0;
 
       const mergeAttendeeEmails = (emails, source = "unknown") => {
         const before = attendeeEmails.size;
@@ -161,6 +192,44 @@ export function createBotSessionRunner(config) {
             totalEmails: attendeeEmails.size,
           });
         }
+      };
+
+      const outlookContext = async () => {
+        if (teamsRuntime?.authenticated) return teamsRuntime.context;
+        if (!identityStorageState) {
+          logIdentityDiagnostic(
+            session.id,
+            "outlook",
+            "IDENTITY_SESSION_UNAVAILABLE",
+            { joinMode: "anonymous" },
+            "warn",
+          );
+          return null;
+        }
+        if (!identityRuntime) {
+          identityRuntime = await launchIdentityRuntime(identityStorageState).catch((error) => {
+            logIdentityDiagnostic(session.id, "outlook", "IDENTITY_BROWSER_LAUNCH_FAILED", {
+              error: error instanceof Error ? error.message : String(error),
+            }, "warn");
+            return null;
+          });
+        }
+        return identityRuntime?.context ?? null;
+      };
+
+      const probeOutlookInvitees = async (reason) => {
+        const context = await outlookContext();
+        if (!context) return [];
+        logIdentityDiagnostic(session.id, "outlook", "INVITEE_PROBE_TRIGGERED", { reason });
+        const emails = await readOutlookMeetingAttendeeEmails(context, session).catch((error) => {
+          logIdentityDiagnostic(session.id, "outlook", "INVITEE_PROBE_FAILED", {
+            reason,
+            error: error instanceof Error ? error.message : String(error),
+          }, "warn");
+          return [];
+        });
+        mergeAttendeeEmails(emails, "outlook");
+        return emails;
       };
 
       const sampleRoster = async ({ probeIdentities = false } = {}) => {
@@ -202,26 +271,7 @@ export function createBotSessionRunner(config) {
           });
           mergeAttendeeEmails(teamsEmails, "teams");
 
-          // Authenticated mode can reuse the same Microsoft browser session in
-          // a second tab. Outlook is an identity resolver only: it may resolve
-          // email addresses for names already observed in Teams, never grant
-          // access to invitees who have not actually appeared in the meeting.
-          if (teamsRuntime.authenticated) {
-            const outlookEmails = await readOutlookMeetingAttendeeEmails(
-              teamsRuntime.context,
-              session,
-              { participantNames: [...rosterNames.values()] },
-            ).catch((error) => {
-              logIdentityDiagnostic(session.id, "outlook", "FALLBACK_CALL_FAILED", {
-                error: error instanceof Error ? error.message : String(error),
-              }, "warn");
-              return [];
-            });
-            mergeAttendeeEmails(outlookEmails, "outlook");
-          }
-
           if (
-            teamsRuntime.authenticated &&
             attendeeEmails.size === 0 &&
             identityProbeAttempts >= 3 &&
             !identityWarningIssued
@@ -259,6 +309,9 @@ export function createBotSessionRunner(config) {
         attendeeEmails: [...attendeeEmails.values()],
         speakerObservations: [...speakerObservations],
       });
+
+      await probeOutlookInvitees("capture-start");
+      nextOutlookProbeAt = Date.now() + 5 * 60_000;
 
       await sampleRoster({ probeIdentities: true }).catch((error) => {
         logIdentityDiagnostic(session.id, "session", "INITIAL_IDENTITY_PROBE_FAILED", {
@@ -342,6 +395,11 @@ export function createBotSessionRunner(config) {
         }
         const nowMs = Date.now();
         const periodicIdentityProbe = nowMs >= nextIdentityProbeAt;
+        const periodicOutlookProbe = nowMs >= nextOutlookProbeAt;
+        if (periodicOutlookProbe) {
+          await probeOutlookInvitees("periodic");
+          nextOutlookProbeAt = nowMs + 5 * 60_000;
+        }
         await sampleRoster({ probeIdentities: periodicIdentityProbe }).catch((error) => {
           logIdentityDiagnostic(session.id, "session", "IDENTITY_PROBE_FAILED", {
             error: error instanceof Error ? error.message : String(error),
@@ -419,6 +477,7 @@ export function createBotSessionRunner(config) {
         await sleep(pollMs);
       }
       const recordedMs = Date.now() - captureStartedAtMs;
+      await probeOutlookInvitees("meeting-end");
       await sampleRoster({ probeIdentities: true }).catch((error) => {
         logIdentityDiagnostic(session.id, "session", "FINAL_IDENTITY_PROBE_FAILED", {
           error: error instanceof Error ? error.message : String(error),
@@ -470,8 +529,9 @@ export function createBotSessionRunner(config) {
       heartbeat.stop();
       await recorderRuntime.dispose(recorder);
       await closeTeams(teamsRuntime);
+      await closeIdentityRuntime(identityRuntime);
       await sink?.dispose().catch(() => undefined);
     }
   }
-  return { runSession, ACTIVE_STATUSES };
+  return { runSession, ACTIVE_STATUSES, setIdentityStorageState };
 }
