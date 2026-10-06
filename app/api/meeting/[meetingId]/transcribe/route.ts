@@ -4,6 +4,7 @@ import { resolveMeetingCallerEmail } from "../../_auth";
 import { ServerWhisperProvider } from "@/lib/meeting/stt/serverWhisperProvider";
 import { ServerDiarizationProviderReal } from "@/lib/meeting/stt/serverDiarizationProviderReal";
 import { acquireMeetingSttSlot, MeetingSttBusyError } from "@/lib/meeting/stt/serverSttConcurrency";
+import { serverTranscriptionCacheKey } from "@/lib/meeting/stt/serverTranscriptionCacheKey";
 
 /**
  * POST /api/meeting/[meetingId]/transcribe
@@ -30,7 +31,6 @@ import { acquireMeetingSttSlot, MeetingSttBusyError } from "@/lib/meeting/stt/se
 
 interface CachedResult {
   promise: Promise<{ segments: unknown[]; spans: unknown[] }>;
-  byteLength: number;
   createdAt: number;
 }
 
@@ -74,13 +74,17 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
     if (Date.now() - cached.createdAt > CACHE_TTL_MS) resultCache.delete(key);
   }
 
-  const cacheKey = params.meetingId;
+  const cacheKey = serverTranscriptionCacheKey({
+    meetingId: params.meetingId,
+    sampleRate,
+    sttLanguage: meeting.sttLanguage,
+    pcmBuffer,
+  });
   const cached = resultCache.get(cacheKey);
   const resultPromise =
-    cached && cached.byteLength === pcmBuffer.byteLength
-      ? cached.promise
-      : runTranscription(pcmBuffer, sampleRate, meeting.sttLanguage);
-  resultCache.set(cacheKey, { promise: resultPromise, byteLength: pcmBuffer.byteLength, createdAt: Date.now() });
+    cached?.promise ??
+    runTranscription(pcmBuffer, sampleRate, meeting.sttLanguage);
+  resultCache.set(cacheKey, { promise: resultPromise, createdAt: Date.now() });
 
   try {
     const result = await resultPromise;
