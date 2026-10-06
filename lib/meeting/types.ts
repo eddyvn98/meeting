@@ -243,10 +243,9 @@ export interface MeetingDetail extends Meeting {
   bookmarks: Bookmark[];
   /** Null until the summarization step has produced a result. */
   summary: MeetingSummary | null;
-  /** "owner" (rename/delete/manage shares allowed), "editor" (an active
-   *  share grant with role "editor" — also sections/summary/minutes edit),
-   *  or "viewer" (an active grant with role "viewer" — read + ask +
-   *  translate only). See app/api/meeting/_access.ts. */
+  /** "owner" (administrative controls), "editor" (explicit editor share),
+   *  or "viewer" (explicit viewer share OR implicit Teams calendar attendee
+   *  access — read + ask + translate only). See app/api/meeting/_access.ts. */
   accessRole: "owner" | MeetingShareRole;
 }
 
