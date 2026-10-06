@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeCalendarAttendeeEmails } from "../../lib/meeting/bot/calendarSyncPayload";
+import { sanitizeMeetingAttendeeEmails } from "../../lib/meeting/bot/attendeeEmails";
 
 describe("calendar attendee identity normalization", () => {
   it("lowercases, validates and deduplicates attendee emails", () => {
-    expect(sanitizeCalendarAttendeeEmails([
+    expect(sanitizeMeetingAttendeeEmails([
       "Alice@Example.com",
       "alice@example.com",
       "not-an-email",
@@ -13,6 +13,6 @@ describe("calendar attendee identity normalization", () => {
   });
 
   it("returns an empty list for non-array input", () => {
-    expect(sanitizeCalendarAttendeeEmails("alice@example.com")).toEqual([]);
+    expect(sanitizeMeetingAttendeeEmails("alice@example.com")).toEqual([]);
   });
 });
