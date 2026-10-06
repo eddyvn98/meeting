@@ -4,6 +4,7 @@ import {
   isAloneFromCount,
   nextAloneState,
   parseParticipantCount,
+  participantCountFromRoster,
 } from "../../scripts/meeting-bot-lifecycle.mjs";
 
 describe("Teams lifecycle classification", () => {
@@ -25,6 +26,13 @@ describe("Teams lifecycle classification", () => {
     expect(parseParticipantCount("Người tham gia (5)")).toBe(5);
     expect(parseParticipantCount("2 người tham gia")).toBe(2);
     expect(isAloneFromCount(parseParticipantCount("1 người"))).toBe(true);
+  });
+
+  it("counts the bot when roster fallback sees one human", () => {
+    const oneHumanPlusBot = participantCountFromRoster(1);
+    expect(oneHumanPlusBot).toBe(2);
+    expect(isAloneFromCount(oneHumanPlusBot)).toBe(false);
+    expect(participantCountFromRoster(0)).toBeNull();
   });
 
   it("only ends after one continuous alone streak", () => {

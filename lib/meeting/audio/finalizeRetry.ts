@@ -18,6 +18,15 @@ export function isFinalizeInProgress(meeting: { status: string; failureReason: s
   return meeting.status === "UPLOADING" && Boolean(meeting.failureReason?.startsWith(FINALIZING_PREFIX));
 }
 
+/**
+ * A bot/session failure may only turn a still-open capture into a retryable
+ * interrupted capture. Once finalization owns the lease, or processing has
+ * started, the runner must not overwrite the Meeting state.
+ */
+export function canMarkCaptureInterrupted(meeting: { status: string; failureReason: string | null }): boolean {
+  return meeting.status === "UPLOADING" && !isFinalizeInProgress(meeting);
+}
+
 export function finalizeLeaseStartedAt(meeting: { failureReason: string | null }): number | null {
   if (!meeting.failureReason?.startsWith(FINALIZING_PREFIX)) return null;
   const value = Date.parse(meeting.failureReason.slice(FINALIZING_PREFIX.length).trim());
