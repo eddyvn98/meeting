@@ -266,7 +266,7 @@ model MeetingBotSession {
 
   @@index([ownerEmail, createdAt])
   @@index([status, requestedAt])
-  @@index([attendeeEmails], type: Gin)
+  @@index([attendeeEmails(ops: ArrayOps)], type: Gin)
   @@unique([source, sourceKey])
   @@map("meeting_bot_sessions")
 }
