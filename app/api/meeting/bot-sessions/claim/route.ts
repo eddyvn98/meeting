@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeMeetingBotSession } from "@/lib/meeting/bot/serialize";
 import type { MeetingBotStatus } from "@/lib/meeting/bot/types";
 import { isBotRunnerRequest, runnerId } from "../_auth";
-import { CAPTURE_INTERRUPTED_PREFIX } from "@/lib/meeting/audio/finalizeRetry";
+import { CAPTURE_INTERRUPTED_PREFIX, isFinalizeInProgress } from "@/lib/meeting/audio/finalizeRetry";
 
 export const runtime = "nodejs";
 
@@ -107,11 +107,11 @@ export async function POST(req: NextRequest) {
           if (session.meetingId) {
             const linkedMeeting = await tx.meeting.findUnique({
               where: { id: session.meetingId },
-              select: { status: true },
+              select: { status: true, failureReason: true },
             });
             if (linkedMeeting?.status === "PROCESSING" || linkedMeeting?.status === "READY") {
               needsContinuation = false;
-            } else {
+            } else if (linkedMeeting && !isFinalizeInProgress(linkedMeeting)) {
               await tx.meeting.updateMany({
                 where: { id: session.meetingId, status: "UPLOADING" },
                 data: { status: "FAILED", failureReason: `${CAPTURE_INTERRUPTED_PREFIX}The meeting bot stopped reporting while recording.` },
@@ -165,10 +165,16 @@ export async function POST(req: NextRequest) {
           data: { status: "FAILED", runnerId: null, endedAt: now, errorMessage: "The runner stopped before finalizing the recording." },
         });
         if (failed.count === 1 && session.meetingId) {
-          await tx.meeting.updateMany({
-            where: { id: session.meetingId, status: "UPLOADING" },
-            data: { status: "FAILED", failureReason: `${CAPTURE_INTERRUPTED_PREFIX}The runner stopped before finalizing the recording.` },
+          const linkedMeeting = await tx.meeting.findUnique({
+            where: { id: session.meetingId },
+            select: { status: true, failureReason: true },
           });
+          if (linkedMeeting && !isFinalizeInProgress(linkedMeeting)) {
+            await tx.meeting.updateMany({
+              where: { id: session.meetingId, status: "UPLOADING" },
+              data: { status: "FAILED", failureReason: `${CAPTURE_INTERRUPTED_PREFIX}The runner stopped before finalizing the recording.` },
+            });
+          }
         }
       }
     });
