@@ -21,7 +21,7 @@ import {
   isStopRejoinError,
 } from "./meeting-bot-recovery.mjs";
 import {
-  clickIfVisible,
+  ensurePeoplePanelOpen,
   errorCode,
   prepareTeamsPage,
   readTeamsPage,
@@ -104,12 +104,16 @@ export function createBotSessionRunner(config) {
       authenticated: runtime.authenticated,
       requireMediaOff,
     });
-    return waitForTeamsJoin(runtime.page, {
+    const joined = await waitForTeamsJoin(runtime.page, {
       sessionId: session.id,
       updateStatus: heartbeat.update,
       shouldStop: control.shouldStop,
       timeoutMs,
     });
+    if (joined) {
+      await ensurePeoplePanelOpen(runtime.page).catch(() => false);
+    }
+    return joined;
   }
   const recovery = createTeamsRecovery({
     launchTeams,
@@ -137,10 +141,7 @@ export function createBotSessionRunner(config) {
       sink = await createPulseAudioSession(session.id);
       teamsRuntime = await launchTeams(sink.sinkName, storageState);
       if (!await joinTeams(teamsRuntime, session, heartbeat)) return;
-      const peopleOpened = await clickIfVisible(
-        teamsRuntime.page,
-        [/^People$/i, /^Participants$/i, /Người tham gia/i],
-      ).catch(() => false);
+      const peopleOpened = await ensurePeoplePanelOpen(teamsRuntime.page).catch(() => false);
       logIdentityDiagnostic(
         session.id,
         "teams",
