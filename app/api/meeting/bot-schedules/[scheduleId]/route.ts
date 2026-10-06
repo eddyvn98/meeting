@@ -150,6 +150,24 @@ export async function PATCH(
           title: body.title === undefined ? schedule.title : cleanMeetingTitle(body.title),
         },
       });
+
+      // A URL change changes the actual Teams occurrence even when its timing
+      // is unchanged. Do not let an already-active bot keep recording the old
+      // room after the user has switched this schedule to a new room.
+      if (body.meetingUrl !== undefined && nextUrl !== schedule.meetingUrl) {
+        await tx.meetingBotSession.updateMany({
+          where: {
+            source: "SCHEDULE",
+            sourceKey: { startsWith: `${schedule.id}:` },
+            status: { in: [...ACTIVE_BOT_STATUSES] },
+          },
+          data: {
+            status: "STOP_REQUESTED",
+            lastHeartbeatAt: new Date(),
+            errorMessage: "The internal meeting schedule URL was changed.",
+          },
+        });
+      }
     }
 
     const updated = await tx.meetingBotSchedule.update({
