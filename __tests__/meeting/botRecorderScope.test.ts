@@ -14,6 +14,7 @@ describe("meeting bot recorder scope", () => {
     expect(isBotRecorderRequestAllowed("/api/meeting/meeting-a/chunks", "POST", baseSession)).toBe(true);
     expect(isBotRecorderRequestAllowed("/api/meeting/meeting-a/finalize", "POST", baseSession)).toBe(true);
     expect(isBotRecorderRequestAllowed("/api/meeting/meeting-a/processing-heartbeat", "POST", baseSession)).toBe(true);
+    expect(isBotRecorderRequestAllowed("/api/meeting/meeting-a/postprocess-status", "POST", baseSession)).toBe(true);
     expect(isBotRecorderRequestAllowed("/api/meeting/meeting-a/transcribe-fast", "POST", baseSession)).toBe(true);
     expect(isBotRecorderRequestAllowed("/api/meeting/meeting-a/transcript", "POST", baseSession)).toBe(true);
     expect(isBotRecorderRequestAllowed("/api/meeting/voice-profiles", "GET", baseSession)).toBe(true);
