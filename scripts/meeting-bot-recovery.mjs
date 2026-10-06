@@ -1,4 +1,5 @@
 import { parseParticipantCount } from "./meeting-bot-lifecycle.mjs";
+import { readTeamsRosterSnapshot } from "./meeting-bot-roster.mjs";
 import {
   clickIfVisible,
   errorCode,
@@ -31,6 +32,7 @@ export function createTeamsRecovery({
   reconnectTimeoutMs,
   rejoinWindowMs,
   rejoinAttemptMs,
+  teamsDisplayName,
 }) {
   async function reconnectTeams(current, session, heartbeat, sinkName, storageState, absoluteDeadline) {
     await closeTeams(current);
@@ -79,6 +81,9 @@ export function createTeamsRecovery({
       }
       const count = parseParticipantCount(snapshot.body);
       if (typeof count === "number" && count > 1) return true;
+      const roster = await readTeamsRosterSnapshot(page, { selfDisplayName: teamsDisplayName })
+        .catch(() => ({ participantNames: [] }));
+      if (roster.participantNames.length > 0) return true;
       await sleep(2_000);
     }
     return false;
