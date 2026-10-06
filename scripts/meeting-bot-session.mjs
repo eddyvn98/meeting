@@ -537,13 +537,18 @@ export function createBotSessionRunner(config) {
       await closeTeams(teamsRuntime);
       teamsRuntime = null;
       await recorderRuntime.finish(recorder);
-      const timedOut = await recorderRuntime.waitForProcessing(
+      const processingOutcome = await recorderRuntime.waitForProcessing(
         recorder, session, heartbeat, recordedMs,
       );
-      if (timedOut) {
+      if (processingOutcome === "TIMEOUT") {
         await heartbeat.update("FAILED", {
           meetingId: recorder.meetingId,
           errorMessage: "Processing timed out. The recording was preserved and can be retried.",
+        });
+      } else if (processingOutcome === "FAILED") {
+        await heartbeat.update("FAILED", {
+          meetingId: recorder.meetingId,
+          errorMessage: "Meeting transcription or processing failed. The recording was preserved for retry.",
         });
       } else {
         await heartbeat.update("ENDED", {
