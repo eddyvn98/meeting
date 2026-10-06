@@ -9,6 +9,7 @@ import { computeProcessingTimeoutMs } from "./meeting-bot-lifecycle.mjs";
 import { createMeetingRecorderRuntime } from "./meeting-bot-recorder.mjs";
 import { cleanupStalePulseAudioModules } from "./meeting-bot-audio.mjs";
 import { createBotSessionRunner } from "./meeting-bot-session.mjs";
+import { pruneIdentityDebugArtifacts } from "./meeting-bot-identity-diagnostics.mjs";
 
 const baseUrl = requiredEnv("MEETING_BOT_BASE_URL").replace(/\/$/, "");
 const runnerToken = requiredEnv("MEETING_BOT_RUNNER_TOKEN");
@@ -171,6 +172,11 @@ async function main() {
     throw new Error(
       "MEETING_BOT_HEADLESS=false requires DISPLAY or WAYLAND_DISPLAY. Use headless mode for unattended Linux.",
     );
+  }
+
+  const prunedDebugArtifacts = await pruneIdentityDebugArtifacts().catch(() => 0);
+  if (prunedDebugArtifacts > 0) {
+    console.log(`[meeting-bot] pruned ${prunedDebugArtifacts} expired identity diagnostic screenshot(s).`);
   }
 
   const cleanedPulseModules = await cleanupStalePulseAudioModules();
