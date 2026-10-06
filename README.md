@@ -32,7 +32,7 @@ Supported repeats: never, daily, weekdays, weekly, every two weeks, and monthly.
 
 The Linux runner polls due schedules, creates exactly one bot session for each occurrence, joins Teams Web, waits in the lobby for a participant to admit it, records/transcribes, and leaves when the meeting ends. Microsoft Graph is optional and is not required for this flow.
 
-See `docs/meeting-bot.md` for the runner and internal scheduler, `docs/microsoft-graph-calendar.md` for Microsoft Graph / Outlook setup, `docs/shared-teams-meeting-room.md` for the shared-room access invariant, and `docs/meeting-bot-reliability.md` for interruption recovery and the production E2E matrix.
+See `docs/meeting-bot.md` for the runner and internal scheduler, `docs/browser-participant-identity.md` for Playwright-based attendee identity extraction, `docs/microsoft-graph-calendar.md` for optional Microsoft Graph / Outlook setup, `docs/shared-teams-meeting-room.md` for the shared-room access invariant, and `docs/meeting-bot-reliability.md` for interruption recovery and the production E2E matrix.
 
 
 ### Optional Outlook calendar sync
