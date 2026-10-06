@@ -156,7 +156,7 @@ export function MeetingAsideRecentItem({
 		<li
 			className={`group/item relative flex items-center rounded-md px-2 py-1.5 text-xs transition-colors ${
 				isActive
-					? "bg-sidebar-accent font-semibold text-primary"
+					? "bg-sidebar-accent font-semibold text-brand-orange"
 					: "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground dark:hover:bg-slate-800"
 			}`}
 		>

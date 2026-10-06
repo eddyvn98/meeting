@@ -95,7 +95,7 @@ export function MeetingBotPanel({
         <div className="mb-3">
           <h2 className="text-sm font-semibold text-foreground">Bot activity</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Scheduled meetings appear here when the runner starts joining them. Admit Meeting STT Assistant from the Teams lobby when prompted.
+            Scheduled meetings appear here when the runner starts joining them. Admit ONG STT Assistant from the Teams lobby when prompted.
           </p>
         </div>
 

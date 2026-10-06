@@ -39,7 +39,7 @@ export function MeetingAskAnswerCard({ answer }: { answer: AskAnswer }) {
 	return (
 		<div className="flex flex-col gap-2">
 			<div className="flex justify-end">
-				<p className="max-w-[85%] rounded-2xl rounded-tr-sm bg-primary px-3.5 py-2 text-sm text-white">
+				<p className="max-w-[85%] rounded-2xl rounded-tr-sm bg-brand-orange px-3.5 py-2 text-sm text-white">
 					{answer.question}
 				</p>
 			</div>
@@ -69,7 +69,7 @@ export function MeetingAskAnswerCard({ answer }: { answer: AskAnswer }) {
 											onClick={() => seekTo(e.timestampMs)}
 											className="flex items-start gap-2 text-left text-xs hover:text-foreground"
 										>
-											<span className="shrink-0 font-medium text-primary">
+											<span className="shrink-0 font-medium text-brand-orange">
 												{formatClock(e.timestampMs)}
 											</span>
 											<span className="text-muted-foreground">{e.quote}</span>

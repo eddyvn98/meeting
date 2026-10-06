@@ -5,7 +5,7 @@ import type { MinutesActionItem } from "@/lib/meeting/overviewSections";
 import { formatActionParenthetical } from "@/lib/meeting/minutesFormat";
 import { AutoTextarea, cellTextClass, isPlainEnter } from "./AutoTextarea";
 
-const metaInput = "w-full min-w-0 rounded border border-border bg-background px-1.5 py-0.5 text-xs outline-none focus:border-primary";
+const metaInput = "w-full min-w-0 rounded border border-border bg-background px-1.5 py-0.5 text-xs outline-none focus:border-brand-orange";
 
 function generateId(): string {
   return `act_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;

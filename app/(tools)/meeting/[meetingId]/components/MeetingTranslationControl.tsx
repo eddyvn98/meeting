@@ -35,7 +35,7 @@ export function MeetingTranslationControl({
 					onClick={onTranslate}
 					disabled={translating}
 					title={hasAnyTranslation ? "Some lines are still untranslated" : `No ${targetLabel} translation has been generated yet`}
-					className="flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+					className="flex shrink-0 items-center gap-1.5 rounded-md bg-brand-orange px-2.5 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
 				>
 					{translating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
 					{translating ? "AI translating…" : hasAnyTranslation ? "Retry missing AI translations" : `Translate to ${targetLabel} with AI`}

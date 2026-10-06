@@ -108,7 +108,7 @@ export function GlossaryQuickAddMenu({
 							type="button"
 							onClick={save}
 							disabled={saving || !term.trim()}
-							className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+							className="rounded-md bg-brand-orange px-2.5 py-1 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
 						>
 							{saving ? "Saving…" : "Add"}
 						</button>

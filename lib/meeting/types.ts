@@ -12,6 +12,11 @@
  */
 
 import type { MeetingShareRole } from "./shareTypes";
+export type {
+  AttendanceSuggestion,
+  MeetingMinutes,
+  UpdateMeetingMinutesInput,
+} from "./meetingMinutesTypes";
 
 /** Reserved displayName marking a diarized speaker as noise/not-a-real-person
  *  ("delete" in the Speakers panel — see MeetingSpeakerRenameList.tsx). Set
@@ -228,10 +233,6 @@ export interface MeetingSummary {
 /** GET /api/meeting/[meetingId] response — everything the Meeting Result
  *  screen (Overview / Transcript / Ask tabs) needs in one fetch. */
 export interface MeetingDetail extends Meeting {
-  /** Real display names observed in the Teams roster during an automated bot
-   *  session. Empty for manual uploads/recordings or when roster capture was
-   *  unavailable. The bot/self entry is excluded. */
-  participantNames: string[];
   transcriptSegments: TranscriptSegment[];
   speakers: Speaker[];
   speakerMappings: SpeakerMapping[];
@@ -277,63 +278,4 @@ export interface CreateMeetingInput {
 export interface UpdateSpeakerMappingInput {
   speakerKey: string;
   displayName: string;
-}
-
-/** GET/PATCH /api/meeting/[meetingId]/minutes response shape — the MOM
- *  header/footer metadata row (see prisma/schema.prisma MeetingMinutes).
- *  `isDefault: true` means no MeetingMinutes row exists yet and every
- *  field below is a computed suggestion (meeting title/date/time from the
- *  Meeting row) rather than something the owner actually saved — the
- *  Stage B UI uses this to decide whether to show the fields as an
- *  editable draft vs already-confirmed. */
-export interface MeetingMinutes {
-  id: string | null;
-  meetingId: string;
-  title: string | null;
-  meetingDate: string | null;
-  timeRange: string | null;
-  venue: string | null;
-  footnote: string | null;
-  recordedBy: string | null;
-  recordedDate: string | null;
-  distributed: string | null;
-  isDefault: boolean;
-  createdAt: string | null;
-  updatedAt: string | null;
-  /** Named-speaker + remembered-role suggestions for the `attendance`
-   *  section — see AttendanceSuggestion. Always computed (not just when
-   *  `isDefault`), so the Stage B UI can offer "add missing attendee"
-   *  suggestions even after the owner has already saved MOM metadata. */
-  attendanceSuggestions: AttendanceSuggestion[];
-  /** Automatic Present rows derived from the Teams roster. Used only when
-   *  this meeting has no saved/manual attendance section. */
-  attendanceDefaults: import("./overviewSections").AttendanceSectionItem[];
-  /** Everyone whose role/organization this owner has saved before, so
-   *  picking a name in the attendance table can fill them in. */
-  knownPeople: AttendanceSuggestion[];
-}
-
-/** PATCH /api/meeting/[meetingId]/minutes request body — every field
- *  optional so a caller can save just the one field the user edited. */
-export interface UpdateMeetingMinutesInput {
-  title?: string | null;
-  meetingDate?: string | null;
-  timeRange?: string | null;
-  venue?: string | null;
-  footnote?: string | null;
-  recordedBy?: string | null;
-  recordedDate?: string | null;
-  distributed?: string | null;
-}
-
-/** One attendance suggestion GET .../minutes offers when no `attendance`
- *  section exists yet — derived from named speakers in this meeting's
- *  transcript, with `role` filled from MeetingPersonRole when the owner
- *  has recorded that person's role before. Not persisted itself; the
- *  Stage B UI turns an accepted suggestion into a real `attendance`
- *  section item via the existing sections API. */
-export interface AttendanceSuggestion {
-  name: string;
-  role: string | null;
-  organization: string | null;
 }

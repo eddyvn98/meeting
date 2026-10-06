@@ -6,6 +6,7 @@ export interface TableCellMarks {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  strikethrough?: boolean;
 }
 
 export interface TableCellRun {
@@ -59,9 +60,47 @@ export interface TableFilterSpec {
   optionId: string;
 }
 
+export interface TableSheetRange {
+  row: [number, number];
+  column: [number, number];
+}
+
+/** Spreadsheet-only structures persisted from/to the Fortune sheet. Per-cell
+ *  maps are sparse and keyed `"row_col"`; Fortune-shaped objects are kept as
+ *  opaque passthrough so a user's edits survive a lossless round trip. */
+export interface TableSheetStructure {
+  /** Fortune `config.borderInfo` entries (rangeType "range" or "cell"). */
+  borderInfo?: Record<string, unknown>[];
+  /** Frozen panes: Fortune type plus the last frozen row/column index. */
+  frozen?: { type: string; row?: number; col?: number };
+  hiddenRows?: number[];
+  hiddenCols?: number[];
+  autoFilter?: { range: TableSheetRange; filters?: Record<string, unknown>; criteria?: Record<string, unknown> };
+  /** Fortune `luckysheet_conditionformat_save` rules. */
+  conditionalFormats?: Record<string, unknown>[];
+  /** Fortune `dataVerification` entries keyed `row_col`. */
+  dataValidations?: Record<string, Record<string, unknown>>;
+  cellLinks?: Record<string, { linkType: string; linkAddress: string }>;
+  cellNotes?: Record<string, { value: string; isShow?: boolean; left?: number | null; top?: number | null; width?: number | null; height?: number | null }>;
+  /** true = wrap text, false = clip; absent = overflow (default). */
+  cellWrap?: Record<string, boolean>;
+  cellVerticalAlign?: Record<string, "top" | "middle" | "bottom">;
+  cellFont?: Record<string, string>;
+  sheetColor?: string;
+  sheetHidden?: boolean;
+}
+
+export interface TableWorkbookSheet {
+  id: string;
+  name: string;
+  data: Omit<TableBlockPayload, "sheets" | "activeSheetId">;
+}
+
 /** The `table` block's full data payload - defined here (not inline in
  *  BlockDataMap) so block.ts stays well under its 300-line cap. */
-export interface TableBlockPayload {
+export interface TableBlockPayload extends TableSheetStructure {
+  sheets?: TableWorkbookSheet[];
+  activeSheetId?: string;
   rows: number;
   cols: number;
   cells: string[][];
@@ -81,6 +120,8 @@ export interface TableBlockPayload {
   headerCol?: boolean;
   cellContents?: TableCellContent[][];
   rowWeights?: number[];
+  rowHeights?: number[];
+  columnWidths?: number[];
   colWeights?: number[];
   cellFontSizes?: number[][];
   cellAlign?: (TableCellAlign | undefined)[][];

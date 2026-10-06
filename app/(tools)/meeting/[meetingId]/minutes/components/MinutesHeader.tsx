@@ -5,7 +5,7 @@ import type { MinutesHeaderFields } from "@/lib/meeting/minutesTypes";
 import { resolveMinutesLabels, type MinutesLabels } from "@/lib/meeting/minutesLabels";
 
 const fieldClass =
-  "w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm text-foreground outline-none read-only:cursor-default focus:border-primary focus:bg-background print:hidden";
+  "w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm text-foreground outline-none read-only:cursor-default focus:border-brand-orange focus:bg-background print:hidden";
 
 function Field({
   label,
@@ -54,7 +54,7 @@ export function MinutesHeader({
   return (
     <div className="flex flex-col gap-4 border-b border-border pb-4">
       <input
-        className="w-full rounded-md border border-transparent bg-transparent px-1 py-1 text-center text-lg font-bold uppercase tracking-wide text-foreground outline-none read-only:cursor-default focus:border-primary focus:bg-background print:hidden"
+        className="w-full rounded-md border border-transparent bg-transparent px-1 py-1 text-center text-lg font-bold uppercase tracking-wide text-foreground outline-none read-only:cursor-default focus:border-brand-orange focus:bg-background print:hidden"
         value={minutes.title ?? ""}
         readOnly={!canEdit}
         onChange={(e) => onChange("title", e.target.value)}

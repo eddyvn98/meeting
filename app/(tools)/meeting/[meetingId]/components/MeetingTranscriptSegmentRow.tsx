@@ -74,7 +74,7 @@ export function MeetingTranscriptSegmentRow({
 		<div
 			ref={rowRef}
 			className={`group flex gap-3 border-l-2 px-4 py-3 transition-colors ${
-				isActive ? "border-primary bg-primary-light/40 dark:bg-amber-950/20" : "border-transparent"
+				isActive ? "border-brand-orange bg-brand-orange-light/40 dark:bg-amber-950/20" : "border-transparent"
 			}`}
 		>
 			<span
@@ -88,7 +88,7 @@ export function MeetingTranscriptSegmentRow({
 					<button
 						type="button"
 						onClick={() => seekTo(segment.startTimeMs)}
-						className="text-xs font-medium text-primary hover:underline"
+						className="text-xs font-medium text-brand-orange hover:underline"
 					>
 						{formatClock(segment.startTimeMs)}
 					</button>

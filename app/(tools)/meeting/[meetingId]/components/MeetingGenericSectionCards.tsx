@@ -20,7 +20,7 @@ export function MeetingTextListCard({ title, items, edit }: { title: string; ite
 	const [addRequestKey, setAddRequestKey] = useState(0);
 	return (
 		<div className="group/card flex flex-col rounded-xl border border-border bg-card p-4">
-			<SectionCardHeader icon={<ListChecks className="h-4 w-4 shrink-0 text-primary" />} title={title} edit={edit} />
+			<SectionCardHeader icon={<ListChecks className="h-4 w-4 shrink-0 text-brand-orange" />} title={title} edit={edit} />
 
 			<CollapsibleSectionBody title={title} footer={edit ? <AddItemButton onClick={() => setAddRequestKey((value) => value + 1)} /> : undefined}>
 				{edit ? (
@@ -45,7 +45,7 @@ export function MeetingQuotesCard({ title, items, edit }: { title: string; items
 	const [addRequestKey, setAddRequestKey] = useState(0);
 	return (
 		<div className="group/card flex flex-col rounded-xl border border-border bg-card p-4">
-			<SectionCardHeader icon={<Quote className="h-4 w-4 shrink-0 text-primary" />} title={title} edit={edit} />
+			<SectionCardHeader icon={<Quote className="h-4 w-4 shrink-0 text-brand-orange" />} title={title} edit={edit} />
 			<CollapsibleSectionBody title={title} footer={edit ? <AddItemButton onClick={() => setAddRequestKey((value) => value + 1)} /> : undefined}>
 				{edit ? (
 					<EditableTextList items={items} onChange={edit.onItemsChange} listClassName="flex flex-col gap-2 text-sm italic text-muted-foreground" emptyLabel="Nothing here yet." addRequestKey={addRequestKey} />

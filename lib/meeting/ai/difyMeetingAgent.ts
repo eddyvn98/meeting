@@ -1,9 +1,7 @@
 /**
  * lib/meeting/ai/difyMeetingAgent.ts
  *
- * Facade for Meeting AI features.
- * Conversational Q&A uses the dedicated CHAT_KEY Dify app; processing
- * features are exported from their own processing-workflow modules.
+ * Facade for Meeting AI features backed by the dedicated MEETING_AI_KEY workflow.
  */
 
 import { callChatAgent, callWorkflowApp, extractAnswer } from "./difyClient";

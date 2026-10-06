@@ -45,7 +45,7 @@ export function MinutesGenerateMenu({ language, onLanguageChange, generating, ha
       </Tooltip>
     ) : (
       <PopoverTrigger asChild>
-        <button type="button" disabled={generating} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50">
+        <button type="button" disabled={generating} className="inline-flex items-center gap-1.5 rounded-md bg-brand-orange px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50">
           {icon} {label}
         </button>
       </PopoverTrigger>
@@ -89,7 +89,7 @@ export function MinutesGenerateMenu({ language, onLanguageChange, generating, ha
             setOpen(false);
             onGenerate();
           }}
-          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-brand-orange px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
         >
           <Sparkles className="h-3.5 w-3.5" /> Generate
         </button>

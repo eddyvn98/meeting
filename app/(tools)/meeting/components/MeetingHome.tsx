@@ -15,7 +15,7 @@ import { ActionTile } from "./MeetingHomeTiles";
 import { acquireMeetingActivity } from "@/lib/meeting/meetingActivityLock";
 
 /**
- * Meeting "Home" screen: centered mark + welcome heading,
+ * Meeting home screen: recording actions and a recent meetings list,
  * a two-action card (each action carries its own language and model; live
  * transcript/translation are switched inside the recording screen), and recent meetings list.
  */
@@ -125,13 +125,11 @@ export function MeetingHome() {
 	return (
 		<div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-10 px-4 py-16">
 			<div className="flex flex-col items-center gap-4 text-center">
-				<div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-					<Mic className="h-6 w-6" aria-hidden="true" />
+				<div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-orange/10 text-brand-orange">
+					<Mic aria-hidden="true" className="h-6 w-6" />
 				</div>
-<div>
-					<h1 className="text-2xl font-semibold text-foreground">
-						Welcome to Meeting
-					</h1>
+				<div>
+					<h1 className="text-2xl font-semibold text-foreground">Welcome to Meeting</h1>
 					<p className="mt-1 text-sm text-muted-foreground">
 						Record or upload a meeting to get an AI-generated summary,
 						transcript, and action items.
@@ -143,7 +141,7 @@ export function MeetingHome() {
 
 			<div className={`grid w-full grid-cols-1 divide-y divide-border overflow-hidden rounded-xl border border-border bg-card ${isMobile ? "" : "sm:grid-cols-2 sm:divide-x sm:divide-y-0"}`}>
 				<ActionTile
-					icon={<Mic className="h-5 w-5 text-primary" />}
+					icon={<Mic className="h-5 w-5 text-brand-orange" />}
 					title={isStartingMeeting ? "Preparing..." : "Start Meeting"}
 					subtitle={isStartingMeeting
 						? (isMobile ? "Waiting for microphone permission" : "Waiting for audio-sharing permission")
@@ -155,7 +153,7 @@ export function MeetingHome() {
 					<ModeControl options={recordOptions} paidOnly={recordOptions.mobileDevice} />
 				</ActionTile>
 				<ActionTile
-					icon={isUploading ? <Loader2 className="h-5 w-5 animate-spin text-primary" /> : <UploadCloud className="h-5 w-5 text-primary" />}
+					icon={isUploading ? <Loader2 className="h-5 w-5 animate-spin text-brand-orange" /> : <UploadCloud className="h-5 w-5 text-brand-orange" />}
 					title={isUploading ? "Uploading..." : "Upload Recording"}
 					subtitle="Upload an existing audio or video file"
 					onClick={handleUploadClick}

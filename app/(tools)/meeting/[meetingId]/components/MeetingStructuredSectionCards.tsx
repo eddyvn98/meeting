@@ -24,7 +24,7 @@ export function MeetingQaCard({ title, items, edit }: { title: string; items: Qa
 
 	return (
 		<div className="group/card flex flex-col rounded-xl border border-border bg-card p-4">
-			<SectionCardHeader icon={<HelpCircle className="h-4 w-4 shrink-0 text-primary" />} title={title} edit={edit} />
+			<SectionCardHeader icon={<HelpCircle className="h-4 w-4 shrink-0 text-brand-orange" />} title={title} edit={edit} />
 			<CollapsibleSectionBody
 				title={title}
 				footer={
@@ -83,7 +83,7 @@ export function MeetingOptionsCompareCard({ title, items, edit }: { title: strin
 
 	return (
 		<div className="group/card flex flex-col rounded-xl border border-border bg-card p-4">
-			<SectionCardHeader icon={<Scale className="h-4 w-4 shrink-0 text-primary" />} title={title} edit={edit} />
+			<SectionCardHeader icon={<Scale className="h-4 w-4 shrink-0 text-brand-orange" />} title={title} edit={edit} />
 			<CollapsibleSectionBody
 				title={title}
 				footer={
@@ -145,7 +145,7 @@ export function MeetingMetricsCard({ title, items, edit }: { title: string; item
 
 	return (
 		<div className="group/card flex flex-col rounded-xl border border-border bg-card p-4">
-			<SectionCardHeader icon={<Gauge className="h-4 w-4 shrink-0 text-primary" />} title={title} edit={edit} />
+			<SectionCardHeader icon={<Gauge className="h-4 w-4 shrink-0 text-brand-orange" />} title={title} edit={edit} />
 			<CollapsibleSectionBody
 				title={title}
 				footer={

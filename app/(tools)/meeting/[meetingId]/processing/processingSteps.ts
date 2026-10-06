@@ -14,7 +14,7 @@
  * PROCESSING, so the user always sees forward motion instead of one step
  * stuck "active" for the whole job. Replace `estimateActiveSubStep` with a
  * real field (e.g. `Meeting.processingStep`) once that lands — see the
- * report note for step 4 of the Meeting build.
+ * report note for step 4 of the Meeting flow.
  */
 
 export type StepState = "complete" | "active" | "pending";

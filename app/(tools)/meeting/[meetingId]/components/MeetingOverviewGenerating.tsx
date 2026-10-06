@@ -10,8 +10,8 @@ export function MeetingOverviewGenerating() {
 		<div className="flex flex-col gap-4" role="status" aria-live="polite">
 			<div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
 				<span className="relative flex h-8 w-8 items-center justify-center">
-					<span className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
-					<Sparkles className="relative h-4 w-4 animate-pulse text-primary" />
+					<span className="absolute inset-0 animate-ping rounded-full bg-brand-orange/20" />
+					<Sparkles className="relative h-4 w-4 animate-pulse text-brand-orange" />
 				</span>
 				<div className="min-w-0 flex-1">
 					<p className="text-sm font-medium text-foreground">Writing the overview…</p>

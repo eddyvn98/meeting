@@ -15,11 +15,7 @@ export interface TranslateLanguage {
   label: string;
 }
 
-// Covers every country meeting notes (the company this app is built for) has an
-// office in — Singapore (HQ), China, Vietnam, India, Malaysia, Indonesia,
-// the Philippines, Mongolia, Myanmar, Thailand, the USA, and Abu Dhabi/UAE —
-// plus Japanese/Korean/French for the wider client base the general chat
-// agent already serves elsewhere in the app.
+// Supports common meeting languages across Southeast Asia and other regions.
 export const TRANSLATE_LANGUAGES: TranslateLanguage[] = [
   { code: "vi", label: "Vietnamese" },
   { code: "en", label: "English" },

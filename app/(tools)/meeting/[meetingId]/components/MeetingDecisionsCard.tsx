@@ -19,7 +19,7 @@ export function MeetingDecisionsCard({ decisions, title = "Decisions", edit }: {
 	const [addRequestKey, setAddRequestKey] = useState(0);
 	return (
 		<div className="group/card flex flex-col rounded-xl border border-border bg-card p-4">
-			<SectionCardHeader icon={<Gavel className="h-4 w-4 shrink-0 text-primary" />} title={title} edit={edit} />
+			<SectionCardHeader icon={<Gavel className="h-4 w-4 shrink-0 text-brand-orange" />} title={title} edit={edit} />
 
 			<CollapsibleSectionBody title={title} footer={edit ? <AddItemButton onClick={() => setAddRequestKey((value) => value + 1)} /> : undefined}>
 				{edit ? (

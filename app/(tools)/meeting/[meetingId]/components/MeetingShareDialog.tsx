@@ -171,7 +171,7 @@ export function MeetingShareDialog({
 									type="button"
 									onClick={handleInvite}
 									disabled={submitting || !email.trim()}
-									className="flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+									className="flex shrink-0 items-center gap-1.5 rounded-md bg-brand-orange px-2.5 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
 								>
 									{submitting && <Loader2 className="h-3 w-3 animate-spin" />}
 									Invite

@@ -32,9 +32,10 @@ import { runChunkedServerTranscription } from "@/lib/meeting/stt/chunkedServerTr
 import { runChunkedServerDiarization } from "@/lib/meeting/stt/chunkedServerDiarization";
 import { isMobileDevice } from "@/lib/meeting/stt/transcriptionMode";
 import { runFastServerTranscription } from "@/lib/meeting/stt/fastServerTranscription";
+import { loadVoiceProfileSeeds } from "./loadVoiceProfileSeeds";
 import type { ProcessingEngine } from "./processingEngine";
 import type { STTSegment, DiarizationSpan } from "@/lib/meeting/stt/types";
-import type { NamedSeedCentroid, SpeakerCentroid } from "@/lib/meeting/stt/diarization/speakerClustering";
+import type { SpeakerCentroid } from "@/lib/meeting/stt/diarization/speakerClustering";
 
 interface SpeakerTaggedSegment extends STTSegment {
   speakerIndex: number;
@@ -292,21 +293,5 @@ async function enrichTranscriptWithDiarization(
   } catch (err) {
     setDiarizationRunStatus("failed");
     console.warn("[meeting] Background diarization failed; keeping the initial transcript:", err instanceof Error ? err.message : String(err));
-  }
-}
-
-/** Fetches the company-wide voice library (GET /api/meeting/voice-profiles)
- *  so diarization clustering can auto-label a colleague enrolled from a
- *  past meeting instead of an anonymous `speaker_N` — see
- *  speakerClustering.ts's `seedProfiles`. Best-effort: a fetch failure just
- *  means this meeting gets no seeds, same as if the library were empty. */
-async function loadVoiceProfileSeeds(): Promise<NamedSeedCentroid[]> {
-  try {
-    const res = await fetch("/api/meeting/voice-profiles", { cache: "no-store" });
-    if (!res.ok) return [];
-    const rows = (await res.json()) as { displayName: string; embedding: number[] }[];
-    return rows.map((r) => ({ displayName: r.displayName, embedding: new Float32Array(r.embedding) }));
-  } catch {
-    return [];
   }
 }

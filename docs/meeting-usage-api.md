@@ -1,7 +1,8 @@
 # Meeting usage API
 
-Meeting records paid usage internally so a separate web module can display
-per-user consumption without needing access to OpenRouter or Dify billing.
+Meeting records paid usage in its own database so a separate web module can
+display per-user consumption without needing access to OpenRouter or Dify
+billing.
 
 ## What is tracked
 
@@ -45,12 +46,21 @@ Blocking Dify requests retry once in the same app for network errors, HTTP
 408/429/5xx, invalid JSON, or an empty usable answer. Authentication and other
 non-retriable 4xx responses fail immediately.
 
-Processing features do not fall back to the Q&A Dify app.
+All Meeting AI calls use the workflow configured by `MEETING_AI_KEY` and
+`MEETING_AI_URL`; Meeting uses its dedicated workflow. Ask Meeting,
+Ask Group, section generation, and mindmap generation have explicit task routes
+in the exported workflow. If a primary answer is empty or invalid, these tasks
+retry through the workflow's Qwen fallback node. Its model is configured in
+the Dify workflow export, not selected by passing a model name at runtime.
 
-Optional cross-model fallback stays inside the same processing Dify app. Set
-primary/fallback model environment variables only after the Dify workflow
-declares a `model_selector` input. Use a fallback from a different model
-family/provider to reduce correlated failures.
+Live translation uses the workflow's `translate_turbo` route as its single-line
+fallback. Set `MEETING_DIFY_TRANSLATION_FALLBACK_ENABLED=true` to enable model
+fallback for live single-line and batch translation; the batch fallback uses a
+separate DeepSeek LLM node. Other blocking processing tasks use transport
+retries only. Arbitrary runtime model selectors are not supported by this
+workflow.
+Publish the task routes and fallback nodes in the configured Meeting Dify app
+for Q&A fallback to take effect.
 
 Streaming requests retry only before any text has been emitted. Once partial
 text reaches the caller, the request is not replayed automatically because

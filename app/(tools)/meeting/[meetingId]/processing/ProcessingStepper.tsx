@@ -6,7 +6,7 @@ import type { ProcessingStep } from "./processingSteps";
 
 /**
  * Vertical stepper for the "Uploading & Processing" screen. State colors
- * (per Meeting design tokens, "Design tokens"): complete =
+ * complete =
  * green (chosen once here: `text-green-600 dark:text-green-400`, reused by
  * every icon/line/label in this component), active = brand orange filled
  * dot + bold label, pending = muted-foreground empty circle. A completed
@@ -36,7 +36,7 @@ export function ProcessingStepper({ steps }: { steps: ProcessingStep[] }) {
               <p
                 className={
                   step.state === "active"
-                    ? "text-sm font-semibold text-primary"
+                    ? "text-sm font-semibold text-brand-orange"
                     : step.state === "complete"
                       ? "text-sm font-medium text-foreground"
                       : "text-sm font-medium text-muted-foreground"
@@ -69,7 +69,7 @@ function StepIcon({ state }: { state: ProcessingStep["state"] }) {
   if (state === "active") {
     return (
       <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-        <span className="h-3 w-3 animate-pulse rounded-full bg-primary" />
+        <span className="h-3 w-3 animate-pulse rounded-full bg-brand-orange" />
       </span>
     );
   }

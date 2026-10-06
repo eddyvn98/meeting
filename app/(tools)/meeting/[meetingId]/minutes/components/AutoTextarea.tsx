@@ -4,7 +4,7 @@ import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, type Keybo
 
 /** Wrapped, auto-growing text cell: shows the full text on as many lines as it needs. */
 export const cellTextClass =
-  "block w-full resize-none overflow-hidden whitespace-pre-wrap break-words rounded border border-transparent bg-transparent px-1 py-0.5 text-sm leading-snug outline-none read-only:cursor-default focus:border-primary focus:bg-background print:border-none";
+  "block w-full resize-none overflow-hidden whitespace-pre-wrap break-words rounded border border-transparent bg-transparent px-1 py-0.5 text-sm leading-snug outline-none read-only:cursor-default focus:border-brand-orange focus:bg-background print:border-none";
 
 /** True for an Enter press that should act as a "new line" command — not
  *  Shift+Enter, and not the Enter that confirms an IME composition (Vietnamese

@@ -121,22 +121,24 @@ export async function callChatAgent(
   signal?: AbortSignal,
   usageFeature = "ask",
 ): Promise<string | null> {
-  const apiKey = process.env.CHAT_KEY;
-  const apiUrl = process.env.NEXT_PUBLIC_AGENT_API_URL;
-  if (!apiKey || !apiUrl) return null;
+  const config = resolveWorkflowConfig(["MEETING_AI_KEY"], ["MEETING_AI_URL"]);
+  if (!config) return null;
 
-  return runBlockingRequest({
-    apiKey,
-    apiUrl,
-    context: usageContext("meeting_qa", callerEmail, usageFeature, apiUrl, extraInputs),
+  const inputs = { ...extraInputs, task: usageFeature, text: query };
+  const primary = await callWorkflowApp(
+    inputs, callerEmail, config.key, config.url, signal, usageFeature,
+  );
+  if (primary) return primary;
+
+  if (signal?.aborted) return null;
+  return callWorkflowApp(
+    { ...inputs, task: `${usageFeature}_fallback` },
+    callerEmail,
+    config.key,
+    config.url,
     signal,
-    body: {
-      inputs: { selected_skills: {}, ...extraInputs },
-      query,
-      response_mode: "blocking",
-      user: callerEmail,
-    },
-  });
+    usageFeature,
+  );
 }
 
 /**

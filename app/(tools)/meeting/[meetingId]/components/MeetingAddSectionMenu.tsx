@@ -32,7 +32,7 @@ export function MeetingAddSectionMenu({
         <button
           type="button"
           disabled={disabled}
-          className="flex items-center gap-1.5 rounded-md border border-dashed border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-60"
+          className="flex items-center gap-1.5 rounded-md border border-dashed border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-brand-orange hover:text-brand-orange disabled:opacity-60"
         >
           <Plus className="h-3.5 w-3.5" /> Add section
         </button>

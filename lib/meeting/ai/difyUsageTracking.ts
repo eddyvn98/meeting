@@ -105,7 +105,7 @@ export function parseDifyUsage(payload: unknown): ParsedDifyUsage {
 }
 
 export function requestedModelFromInputs(inputs: Record<string, unknown> | undefined): string | null {
-  const model = inputs?.model_selector ?? inputs?.model ?? inputs?.model_id ?? inputs?.primary_model;
+  const model = inputs?.model ?? inputs?.model_id ?? inputs?.primary_model;
   return typeof model === "string" && model.trim() ? model.trim() : null;
 }
 

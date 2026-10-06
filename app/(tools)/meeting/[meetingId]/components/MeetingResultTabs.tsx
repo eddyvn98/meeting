@@ -39,7 +39,7 @@ export function MeetingResultTabs({
 						type="button"
 						onClick={() => onChange(tab.id)}
 						className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs font-medium transition-colors ${
-							isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+							isActive ? "text-brand-orange" : "text-muted-foreground hover:text-foreground"
 						}`}
 						aria-current={isActive ? "page" : undefined}
 					>

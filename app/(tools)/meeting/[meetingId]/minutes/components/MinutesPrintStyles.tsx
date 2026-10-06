@@ -23,6 +23,15 @@ export function MinutesPrintStyles() {
 					background: #fff !important;
 				}
 
+				/* The app shell and main pane are fixed-height scroll containers.
+				   Let the Minutes subtree escape those bounds so print can paginate. */
+				body *:has(#minutes-print-root) {
+					height: auto !important;
+					min-height: 0 !important;
+					max-height: none !important;
+					overflow: visible !important;
+				}
+
 				body * {
 					visibility: hidden;
 				}

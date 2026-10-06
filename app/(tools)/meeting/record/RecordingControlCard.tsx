@@ -148,7 +148,7 @@ export function RecordingControlCard({
             </div>
             <div className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-primary transition-[width] duration-300"
+                className="h-full rounded-full bg-brand-orange transition-[width] duration-300"
                 style={{ width: `${processingProgressPercent}%` }}
               />
             </div>
@@ -170,7 +170,7 @@ export function RecordingControlCard({
           {uploadedCount} / {chunkCount} chunks backed up
         </p>
         {marksCount > 0 && (
-          <p className="font-medium text-primary">
+          <p className="font-medium text-brand-orange">
             {marksCount} moment(s) marked
           </p>
         )}
@@ -191,7 +191,7 @@ export function RecordingControlCard({
           onClick={onMarkImportant}
           className="flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5 text-xs font-semibold text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
         >
-          <Flag className="h-4 w-4 text-primary" />
+          <Flag className="h-4 w-4 text-brand-orange" />
           <span>Mark important</span>
         </button>}
 
@@ -213,7 +213,7 @@ export function RecordingControlCard({
           type="button"
           disabled={(!isRecording && !processingComplete && !processingFailed) || ending}
           onClick={processingComplete || processingFailed ? onOpenResult : onEndMeeting}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 transition-colors shadow-sm"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-orange px-4 py-2.5 text-xs font-semibold text-white hover:bg-brand-orange/90 disabled:cursor-not-allowed disabled:opacity-50 transition-colors shadow-sm"
         >
           {processingComplete || processingFailed ? <ExternalLink className="h-4 w-4" /> : <Square className="h-4 w-4 fill-white" />}
           <span>{endLabel}</span>

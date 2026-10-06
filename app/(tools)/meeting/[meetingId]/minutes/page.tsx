@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ChevronLeft, FileText, LayoutGrid, Loader2, Printer } from "lucide-react";
+import { FileText, LayoutGrid, Loader2, Printer } from "lucide-react";
 import ProtectedRoute from "@/components/features/auth/protected-route";
 import { useToolLayoutSlots } from "@/hooks/use-tool-layout-slots";
 import { MeetingAside } from "../../components/MeetingAside";
@@ -37,15 +37,6 @@ import { resolveMinutesLabels } from "@/lib/meeting/minutesLabels";
 import { useMinutesDocxExport } from "./useMinutesDocxExport";
 import { useMinutesComments } from "./comments/useMinutesComments";
 import { MinutesCommentsProvider } from "./comments/MinutesCommentsContext";
-
-function MinutesBreadcrumb({ meetingId }: { meetingId: string }) {
-	return (
-		<Link href={`/meeting/${meetingId}`} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-			<ChevronLeft className="h-4 w-4" />
-			Back to meeting
-		</Link>
-	);
-}
 
 export default function MeetingMinutesPage() {
 	const params = useParams<{ meetingId: string }>();
@@ -82,7 +73,7 @@ export default function MeetingMinutesPage() {
 		};
 	}, [meetingId]);
 
-	useToolLayoutSlots({ showHistory: false, aside: <MeetingAside />, breadcrumb: <MinutesBreadcrumb meetingId={meetingId} /> });
+	useToolLayoutSlots({ showHistory: false, aside: <MeetingAside /> });
 
 	const commentsApi = useMinutesComments(meetingId);
 	const translated = useMinutesTranslations(meetingId);
