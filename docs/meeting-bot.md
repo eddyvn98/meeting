@@ -61,7 +61,7 @@ Run the complete Meeting workflow without requiring a Teams custom app or Micros
 5. The Linux runner joins automatically near the scheduled time.
 6. A participant admits `ONG STT Assistant` from the Teams lobby when required.
 7. Existing recording, STT, summary, minutes and action-item processing runs normally.
-8. The bot leaves when the call ends or its configured safety timeout is reached.
+8. The bot leaves when the call ends or its configured safety timeout is reached.\n9. When capture starts, verified attendees receive a Meeting notification and can open the shared live STT room at `/meeting/{meetingId}?tab=transcript`.
 
 ## Internal schedules
 
@@ -166,9 +166,9 @@ MEETING_BOT_REJOIN_WINDOW_MS=120000
 MEETING_BOT_CALENDAR_LATE_GRACE_MS=600000
 ```
 
-`MEETING_BOT_BASE_URL` must be reachable from the Linux runner. The runner and web application must use the same `NEXTAUTH_SECRET`.
+`MEETING_BOT_BASE_URL` must be reachable from the Linux runner. `NEXTAUTH_SECRET` remains server-only. The runner authenticates with `MEETING_BOT_RUNNER_TOKEN`; the web server issues a short-lived recorder session token for each claimed bot session.
 
-Do not expose `MEETING_BOT_RUNNER_TOKEN` in browser code or commit real credentials.
+Do not expose `MEETING_BOT_RUNNER_TOKEN` in browser code or commit real credentials. Keep Chromium sandboxing enabled in production and run the runner as a dedicated non-root Linux user.
 
 ## Run
 
