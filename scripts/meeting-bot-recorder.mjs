@@ -153,7 +153,13 @@ export function createMeetingRecorderRuntime({
     if (!response.ok()) throw new Error(`Recorder finalization failed (${response.status()}).`);
   }
 
-  async function waitForProcessing(recorder, session, heartbeat, recordedMs) {
+  async function waitForProcessing(
+    recorder,
+    session,
+    heartbeat,
+    recordedMs,
+    { shouldShutdown = () => false } = {},
+  ) {
     const timeoutMs = computeProcessingTimeoutMs({
       recordedMs,
       minMs: processingTimeoutMinMs,
@@ -166,6 +172,7 @@ export function createMeetingRecorderRuntime({
 
     let readySeenAt = null;
     while (Date.now() < deadline) {
+      if (shouldShutdown()) return "SHUTDOWN";
       await heartbeat.update("STOP_REQUESTED", { meetingId: recorder.meetingId }).catch(() => undefined);
       try {
         const response = await requestContext.get(meetingUrl);
