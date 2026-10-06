@@ -28,33 +28,32 @@ async function deliver(
   extra: { anchorId?: string; commentId?: string; actorEmail: string; linkSuffix?: string },
 ) {
   if (recipients.length === 0) return;
-  const created = (
-    await Promise.all(
-      recipients.map(async (r) => {
-        try {
-          return await prisma.meetingNotification.create({
-            data: {
-              recipientEmail: r.email,
-              meetingId: meeting.id,
-              type: r.type,
-              body: r.body,
-              anchorId: extra.anchorId ?? null,
-              commentId: extra.commentId ?? null,
-              actorEmail: extra.actorEmail,
-              dedupeKey: r.dedupeKey ?? null,
-            },
-          });
-        } catch (error) {
-          if (r.dedupeKey && (error as { code?: string })?.code === "P2002") return null;
-          throw error;
-        }
-      }),
-    )
-  ).filter((row): row is NonNullable<typeof row> => row !== null);
+  const created = await Promise.all(
+    recipients.map(async (r) => {
+      try {
+        return await prisma.meetingNotification.create({
+          data: {
+            recipientEmail: r.email,
+            meetingId: meeting.id,
+            type: r.type,
+            body: r.body,
+            anchorId: extra.anchorId ?? null,
+            commentId: extra.commentId ?? null,
+            actorEmail: extra.actorEmail,
+            dedupeKey: r.dedupeKey ?? null,
+          },
+        });
+      } catch (error) {
+        if (r.dedupeKey && (error as { code?: string })?.code === "P2002") return null;
+        throw error;
+      }
+    }),
+  );
   if (!emailConfig()) return;
 
   const link = `${appBaseUrl()}/meeting/${meeting.id}${extra.linkSuffix ?? (extra.anchorId ? "/minutes" : "")}`;
   for (const row of created) {
+    if (!row) continue;
     const recent = await prisma.meetingNotification.findFirst({
       where: { recipientEmail: row.recipientEmail, meetingId: meeting.id, emailedAt: { gt: new Date(Date.now() - EMAIL_THROTTLE_MS) } },
       select: { id: true },
