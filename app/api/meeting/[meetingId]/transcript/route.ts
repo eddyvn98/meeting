@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolveMeetingCallerEmail } from "../../_auth";
 import { serializeMeeting } from "@/lib/meeting/serialize";
-import { generateMeetingInsights } from "@/lib/meeting/ai/difyMeetingAgent";
-import { buildSummaryCreateInput } from "@/lib/meeting/ai/buildSummaryCreateInput";
 import { correctTranscriptText } from "@/lib/meeting/glossary/applyGlossary";
-import { alignEvidenceSegmentIds } from "@/lib/meeting/ai/evidenceAlignment";
+import { ensureMeetingEnrichment } from "@/lib/meeting/ai/ensureMeetingEnrichment";
 import { remapSummaryEvidenceAfterTranscriptReplace } from "@/lib/meeting/ai/remapSummaryEvidence";
 import { inferRosterSpeakerMappings, parseSpeakerObservations } from "@/lib/meeting/bot/rosterMapping";
 
@@ -33,16 +31,6 @@ interface IncomingSpeakerCentroid {
 
 function speakerKeyForIndex(index: number): string {
   return `speaker_${index + 1}`;
-}
-
-/** True only for the untouched default title the record flow stamps on
- *  creation (app/(tools)/meeting/record/page.tsx's defaultTitle: "Meeting -
- *  <locale timestamp>"). Auto-titling from content only ever replaces THIS —
- *  never a title the user already typed (record flow's own title field) or
- *  the uploaded file's name (fileUploadPipeline.ts), both of which are
- *  already meaningful to the user. */
-function isDefaultTitle(title: string): boolean {
-  return /^Meeting - /.test(title);
 }
 
 function speakerKeyFor(segment: IncomingSegment): string {
@@ -270,6 +258,17 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
         failureReason: null,
         isMockResult: false,
         durationSec: meeting.durationSec ?? Math.round(lastEnd),
+        ...(isDiarizationUpdate
+          ? {
+              diarizationStatus: "DONE",
+              diarizationError: null,
+            }
+          : {
+              diarizationStatus: "PENDING",
+              diarizationError: null,
+              enrichmentStatus: "RUNNING",
+              enrichmentError: null,
+            }),
       },
     });
 
@@ -277,65 +276,16 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
   }, { maxWait: 10_000, timeout: 30_000 });
 
   // The first durable STT text is enough for Summary + Overview sections.
-  // Start Dify immediately; speaker detection continues independently.
+  // The job writes durable RUNNING/DONE/FAILED state so a later page load can
+  // retry it after a server restart without re-running STT.
   if (!isDiarizationUpdate) {
-    runEnrichmentInBackground(meeting.id, meeting.title, email, segments);
+    void ensureMeetingEnrichment(meeting.id, email).catch((err) => {
+      console.warn(
+        "[meeting] Background insights enrichment failed:",
+        err instanceof Error ? err.message : String(err),
+      );
+    });
   }
 
   return NextResponse.json(serializeMeeting(updated));
-}
-
-/**
- * Fire-and-forget: generates the Overview summary after the meeting is
- * already marked READY and the response is on its way to the client. Not
- * awaited by POST — errors are caught and logged here instead of
- * propagating, since there's no response left to fail.
- */
-function runEnrichmentInBackground(
-  meetingId: string,
-  meetingTitle: string,
-  callerEmail: string,
-  segments: IncomingSegment[],
-): void {
-  void (async () => {
-    try {
-      // Speaker labels are deliberately NOT part of this critical path. On the
-      // first text save every line may still be speaker_1; Summary/Overview
-      // only need the words and timestamps.
-      const insights = await generateMeetingInsights({
-        meetingTitle,
-        transcript: segments.map((s) => ({ speaker: speakerKeyFor(s), text: s.text })),
-        callerEmail,
-      });
-      const overview = insights?.overview || segments.map((s) => s.text).join(" ").slice(0, 500);
-
-      await prisma.$transaction(async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-overview:${meetingId}`}))`;
-
-        // A retry may already have produced the Overview while this Dify call
-        // was in flight. Never overwrite manual/finished content.
-        const existing = await tx.meetingSummary.findUnique({ where: { meetingId } });
-        if (existing) return;
-
-        const currentSegments = await tx.transcriptSegment.findMany({
-          where: { meetingId },
-          orderBy: { order: "asc" },
-        });
-        const alignedIds = alignEvidenceSegmentIds(segments, currentSegments);
-
-        await tx.meetingSummary.create({
-          data: buildSummaryCreateInput(meetingId, overview, insights, alignedIds),
-        });
-
-        if (insights?.suggestedTitle && isDefaultTitle(meetingTitle)) {
-          await tx.meeting.update({
-            where: { id: meetingId },
-            data: { title: insights.suggestedTitle },
-          });
-        }
-      }, { maxWait: 10_000, timeout: 30_000 });
-    } catch (err) {
-      console.warn("[meeting] Background insights enrichment failed:", err instanceof Error ? err.message : String(err));
-    }
-  })();
 }
