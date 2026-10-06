@@ -450,17 +450,22 @@ export function createBotSessionRunner(config) {
           await probeOutlookInvitees("periodic");
           nextOutlookProbeAt = nowMs + 5 * 60_000;
         }
-        await sampleRoster({ probeIdentities: periodicIdentityProbe }).catch((error) => {
+        const rosterSample = await sampleRoster({ probeIdentities: periodicIdentityProbe }).catch((error) => {
           logIdentityDiagnostic(session.id, "session", "IDENTITY_PROBE_FAILED", {
             error: error instanceof Error ? error.message : String(error),
           }, "warn");
+          return null;
         });
         if (periodicIdentityProbe) nextIdentityProbeAt = nowMs + IDENTITY_PROBE_MS;
         if (isMaxDurationExceeded(captureStartedAtMs, nowMs, maxDurationMs)) {
           exitMessage = "The bot reached the maximum configured meeting duration.";
           break;
         }
-        const participantCount = parseParticipantCount(snapshot.body);
+        const participantCount =
+          parseParticipantCount(snapshot.body) ??
+          (rosterSample?.currentParticipantNames?.length
+            ? rosterSample.currentParticipantNames.length
+            : undefined);
         if (typeof participantCount === "number" && participantCount > 1) {
           seenOtherParticipant = true;
         }
