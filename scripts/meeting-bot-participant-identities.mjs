@@ -205,34 +205,6 @@ async function outlookAttendeeEmails(dialog) {
   return [...result];
 }
 
-async function emailsForObservedParticipant(dialog, name) {
-  const matches = dialog.getByText(name, { exact: true });
-  const count = Math.min(await matches.count().catch(() => 0), 10);
-  const emails = new Set();
-
-  for (let index = 0; index < count; index += 1) {
-    const node = matches.nth(index);
-    if (!await node.isVisible().catch(() => false)) continue;
-
-    const candidates = [
-      node.locator('xpath=ancestor::*[@role="listitem"][1]'),
-      node.locator('xpath=ancestor::*[@role="option"][1]'),
-      node.locator('xpath=ancestor::button[1]'),
-      node.locator('xpath=ancestor::*[contains(translate(@data-automationid,"ATTENDEE","attendee"),"attendee")][1]'),
-    ];
-
-    for (const candidate of candidates) {
-      if (!await candidate.isVisible().catch(() => false)) continue;
-      const rowEmails = await emailsFromLocator(candidate, 20);
-      // Authorization must be unambiguous: one observed Teams display name
-      // may resolve to exactly one email in the same Outlook attendee row.
-      if (rowEmails.length === 1) emails.add(rowEmails[0]);
-    }
-  }
-
-  return [...emails];
-}
-
 async function clickFirstVisible(locator) {
   const count = Math.min(await locator.count().catch(() => 0), 20);
   for (let index = 0; index < count; index += 1) {
