@@ -169,6 +169,42 @@ export async function readTeamsParticipantEmails(page, {
   return [...emails];
 }
 
+async function outlookAttendeeEmails(dialog) {
+  const result = new Set();
+
+  // Prefer explicit mailto links: these are strong identity signals and avoid
+  // accidentally reading arbitrary email-like text from the meeting body.
+  const mailtoLinks = dialog.locator('a[href^="mailto:" i]');
+  const mailtoCount = Math.min(await mailtoLinks.count().catch(() => 0), 300);
+  for (let index = 0; index < mailtoCount; index += 1) {
+    const href = await mailtoLinks.nth(index).getAttribute("href").catch(() => null);
+    const email = extractEmailsFromText(href || "")[0];
+    if (email) result.add(email);
+  }
+
+  // Outlook sometimes renders attendee identities as plain text inside
+  // attendee/persona/recipient rows instead of mailto anchors. Restrict this
+  // fallback to semantic attendee-like containers rather than the whole event.
+  const rows = dialog.locator([
+    '[data-automationid*="attendee" i]',
+    '[data-testid*="attendee" i]',
+    '[data-automationid*="persona" i]',
+    '[data-testid*="persona" i]',
+    '[data-automationid*="recipient" i]',
+    '[data-testid*="recipient" i]',
+    '[role="listitem"]',
+    '[role="option"]',
+  ].join(","));
+  const rowCount = Math.min(await rows.count().catch(() => 0), 500);
+  for (let index = 0; index < rowCount; index += 1) {
+    const row = rows.nth(index);
+    if (!await row.isVisible().catch(() => false)) continue;
+    mergeEmails(result, await emailsFromLocator(row, 10));
+  }
+
+  return [...result];
+}
+
 async function emailsForObservedParticipant(dialog, name) {
   const matches = dialog.getByText(name, { exact: true });
   const count = Math.min(await matches.count().catch(() => 0), 10);
@@ -218,7 +254,6 @@ async function clickFirstVisible(locator) {
  */
 export async function readOutlookMeetingAttendeeEmails(context, session, {
   timeoutMs = 15_000,
-  participantNames = [],
 } = {}) {
   const sessionId = session?.id || "unknown";
   if (!context || !session?.title) {
@@ -227,12 +262,7 @@ export async function readOutlookMeetingAttendeeEmails(context, session, {
   }
   logIdentityDiagnostic(sessionId, "outlook", "PROBE_START", {
     title: session.title,
-    observedParticipants: participantNames.length,
   });
-  if (!Array.isArray(participantNames) || participantNames.length === 0) {
-    logIdentityDiagnostic(sessionId, "outlook", "NO_OBSERVED_PARTICIPANTS", {}, "warn");
-    return [];
-  }
   const page = await context.newPage().catch((error) => {
     logIdentityDiagnostic(sessionId, "outlook", "PAGE_CREATE_FAILED", {
       error: error instanceof Error ? error.message : String(error),
@@ -303,32 +333,17 @@ export async function readOutlookMeetingAttendeeEmails(context, session, {
       }
       if (!thisDialogMatches) continue;
 
-      for (const rawName of participantNames) {
-        const name = typeof rawName === "string" ? rawName.trim() : "";
-        if (!name) continue;
-        const resolved = await emailsForObservedParticipant(dialog, name);
-        if (resolved.length === 1) {
-          emails.add(resolved[0]);
-          logIdentityDiagnostic(sessionId, "outlook", "OBSERVED_PARTICIPANT_RESOLVED", {
-            participant: name,
-          });
-        } else if (resolved.length === 0) {
-          logIdentityDiagnostic(sessionId, "outlook", "OBSERVED_PARTICIPANT_UNRESOLVED", {
-            participant: name,
-          }, "warn");
-        } else {
-          logIdentityDiagnostic(sessionId, "outlook", "OBSERVED_PARTICIPANT_AMBIGUOUS", {
-            participant: name,
-            matches: resolved.length,
-          }, "warn");
-        }
-      }
+      const attendeeEmails = await outlookAttendeeEmails(dialog);
+      mergeEmails(emails, attendeeEmails);
+      logIdentityDiagnostic(sessionId, "outlook", "INVITEE_EMAILS_EXTRACTED", {
+        emails: attendeeEmails.length,
+      });
     }
 
     // Title alone is not an authorization identity: duplicate meeting titles
     // are common. Refuse Outlook-derived emails unless the event's Teams join
-    // URL matches the bot session. Even after a verified event is found, only
-    // names actually observed in the Teams roster may be resolved to email.
+    // URL matches the bot session. Once verified, the event invitation list is
+    // allowed to grant shared-room access even to invitees who never join.
     if (!matchedMeeting) {
       logIdentityDiagnostic(sessionId, "outlook", "JOIN_URL_MISMATCH", {
         dialogs: dialogCount,
@@ -336,13 +351,12 @@ export async function readOutlookMeetingAttendeeEmails(context, session, {
       await captureIdentityScreenshot(page, sessionId, "outlook-join-url-mismatch");
       return [];
     }
-    logIdentityDiagnostic(sessionId, "outlook", emails.size > 0 ? "PROBE_SUCCESS" : "VERIFIED_EVENT_NO_RESOLVED_EMAIL", {
+    logIdentityDiagnostic(sessionId, "outlook", emails.size > 0 ? "PROBE_SUCCESS" : "VERIFIED_EVENT_NO_EMAIL", {
       emails: emails.size,
       dialogs: dialogCount,
-      observedParticipants: participantNames.length,
     }, emails.size > 0 ? "log" : "warn");
     if (emails.size === 0) {
-      await captureIdentityScreenshot(page, sessionId, "outlook-verified-event-no-resolved-email");
+      await captureIdentityScreenshot(page, sessionId, "outlook-verified-event-no-email");
     }
     return [...emails];
   } catch (error) {
