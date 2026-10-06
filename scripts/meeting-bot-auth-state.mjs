@@ -31,3 +31,19 @@ export async function getTeamsStorageState(env = process.env, cwd = process.cwd(
   }
   return authStatePath;
 }
+
+
+export function resolveIdentityAuthStatePath(env = process.env, cwd = process.cwd()) {
+  const configured = env.MEETING_BOT_IDENTITY_AUTH_STATE?.trim();
+  return resolve(cwd, configured || env.MEETING_BOT_TEAMS_AUTH_STATE?.trim() || ".meeting-bot/teams-auth.json");
+}
+
+export async function getIdentityStorageState(env = process.env, cwd = process.cwd()) {
+  const authStatePath = resolveIdentityAuthStatePath(env, cwd);
+  try {
+    await access(authStatePath);
+    return authStatePath;
+  } catch {
+    return undefined;
+  }
+}

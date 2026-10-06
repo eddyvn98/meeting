@@ -23,7 +23,7 @@ one Meeting / meetingId
         +-- Minutes shared by attendees
 ```
 
-Every signed-in attendee whose email is present in the Graph calendar occurrence has implicit **viewer** access to that Meeting. No manual `MeetingShare` row is required.
+Every signed-in person whose verified email belongs to the shared-room membership has implicit **viewer** access to that Meeting. Membership is the union of the verified Outlook invitation list and additional actual Teams attendees whose email can be resolved safely. No manual `MeetingShare` row is required.
 
 `MeetingShare` is reserved for explicit access outside the Teams attendee list, or for upgrading somebody to editor.
 
@@ -33,13 +33,7 @@ The unattended bot is a Playwright Teams Web runner, not a Microsoft Graph Commu
 
 Shared-room authorization comes from trusted attendee email identities stored on `MeetingBotSession.attendeeEmails`. The browser bot can now populate them directly from visible Teams profile/contact cards and, in authenticated mode, Outlook Web Calendar. Microsoft Graph Calendar remains an optional additional source rather than a requirement.
 
-The occurrence identity remains the existing Graph source key:
-
-```text
-graph:{mailboxKey}:{eventId}:{scheduledAt}
-```
-
-This matters for recurring meetings that reuse the same Teams join URL.
+Calendar-backed sessions may still use the existing Graph occurrence key when Graph is configured, but Graph is not required for browser identity extraction. The active Teams join URL is also used to verify that an Outlook event is the same meeting before invitee emails are accepted.
 
 ## Access model
 
@@ -72,7 +66,7 @@ All authorized viewers receive the same persisted transcript segments. Translati
 
 ## Important limitation
 
-Automatic attendee membership requires an email identity that the bot can actually observe. A display name alone is never enough. Authenticated mode has the best coverage because Teams profile cards and Outlook Web may expose internal email addresses; guest mode may only expose names.
+Automatic membership requires a trusted email identity. A display name alone is never enough. Outlook Web can provide the verified invitation list even when the Teams join itself is Guest, as long as a separate saved Microsoft identity session is configured. Teams profile cards supplement that list for ad-hoc attendees who actually join.
 
 If no source exposes an email, recording and STT continue normally but automatic shared-room access can be incomplete. Do not replace this rule with broad company-wide live-meeting visibility and do not infer authorization from participant display names.
 

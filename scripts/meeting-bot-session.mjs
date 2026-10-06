@@ -7,6 +7,7 @@ import {
   readOutlookMeetingAttendeeEmails,
   readTeamsParticipantEmails,
 } from "./meeting-bot-participant-identities.mjs";
+import { logIdentityDiagnostic } from "./meeting-bot-identity-diagnostics.mjs";
 import {
   initialAloneState,
   isAloneFromCount,
@@ -36,6 +37,7 @@ const ROSTER_PERSIST_MS = 30_000;
 const IDENTITY_PROBE_MS = 60_000;
 const MAX_SPEAKER_OBSERVATIONS = 5_000;
 export function createBotSessionRunner(config) {
+  let identityStorageState = config.identityStorageState;
   const {
     api, emit, recorderRuntime, runnerId, teamsDisplayName,
     browserChannel, browserExecutable, headless, pollMs,
@@ -43,6 +45,34 @@ export function createBotSessionRunner(config) {
     aloneTimeoutMs, initialAloneGraceMs, maxDurationMs, audioInitialWarnMs, audioSilenceWarnMs,
   } = config;
   const control = createSessionControl({ api, emit, runnerId });
+
+  function setIdentityStorageState(value) {
+    identityStorageState = value || undefined;
+  }
+
+  async function launchIdentityRuntime(storageState) {
+    if (!storageState) return null;
+    const browser = await chromium.launch({
+      ...(browserChannel ? { channel: browserChannel } : {}),
+      ...(browserExecutable ? { executablePath: browserExecutable } : {}),
+      headless,
+      args: [
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-notifications",
+      ],
+    });
+    const context = await browser.newContext({
+      storageState,
+      viewport: { width: 1440, height: 1000 },
+    });
+    return { browser, context };
+  }
+
+  async function closeIdentityRuntime(runtime) {
+    await runtime?.context.close().catch(() => undefined);
+    await runtime?.browser.close().catch(() => undefined);
+  }
   async function launchTeams(sinkName, storageState) {
     const browser = await chromium.launch({
       ...(browserChannel ? { channel: browserChannel } : {}),
@@ -104,6 +134,7 @@ export function createBotSessionRunner(config) {
     const heartbeat = control.createHeartbeat(session.id);
     let sink;
     let teamsRuntime;
+    let identityRuntime;
     let recorder;
     let exitMessage = null;
     try {
@@ -111,10 +142,17 @@ export function createBotSessionRunner(config) {
       sink = await createPulseAudioSession(session.id);
       teamsRuntime = await launchTeams(sink.sinkName, storageState);
       if (!await joinTeams(teamsRuntime, session, heartbeat)) return;
-      await clickIfVisible(
+      const peopleOpened = await clickIfVisible(
         teamsRuntime.page,
         [/^People$/i, /^Participants$/i, /Người tham gia/i],
       ).catch(() => false);
+      logIdentityDiagnostic(
+        session.id,
+        "teams",
+        peopleOpened ? "PEOPLE_PANEL_OPENED" : "PEOPLE_PANEL_OPEN_FAILED",
+        { authenticated: teamsRuntime.authenticated },
+        peopleOpened ? "log" : "warn",
+      );
       recorder = await recorderRuntime.launch(session, sink.sourceName);
       await heartbeat.update("CAPTURING", { meetingId: recorder.meetingId });
       const captureStartedAtMs = Date.now();
@@ -124,59 +162,136 @@ export function createBotSessionRunner(config) {
           ? session.attendeeEmails.map((email) => String(email).trim().toLowerCase()).filter(Boolean)
           : [],
       );
+      logIdentityDiagnostic(session.id, "session", "INITIAL_STATE", {
+        authenticated: teamsRuntime.authenticated,
+        existingEmails: attendeeEmails.size,
+      });
       const speakerObservations = [];
       let nextRosterPersistAt = 0;
       let nextIdentityProbeAt = 0;
       let identityProbeAttempts = 0;
       let identityWarningIssued = false;
       let identityDirty = false;
+      let nextOutlookProbeAt = 0;
 
-      const mergeAttendeeEmails = (emails) => {
+      const mergeAttendeeEmails = (emails, source = "unknown") => {
         const before = attendeeEmails.size;
         for (const value of emails || []) {
           const email = typeof value === "string" ? value.trim().toLowerCase() : "";
           if (email) attendeeEmails.add(email);
         }
-        if (attendeeEmails.size > before) identityDirty = true;
+        const added = attendeeEmails.size - before;
+        if (added > 0) {
+          identityDirty = true;
+          logIdentityDiagnostic(session.id, source, "EMAILS_MERGED", {
+            added,
+            totalEmails: attendeeEmails.size,
+          });
+        } else {
+          logIdentityDiagnostic(session.id, source, "NO_NEW_EMAILS", {
+            totalEmails: attendeeEmails.size,
+          });
+        }
       };
 
-      // Authenticated mode can reuse the same Microsoft browser session in a
-      // second tab to inspect the Outlook event. This is a non-blocking
-      // fallback: recording/STT must never depend on Outlook UI stability.
-      if (teamsRuntime.authenticated) {
-        void readOutlookMeetingAttendeeEmails(teamsRuntime.context, session)
-          .then(mergeAttendeeEmails)
-          .catch(() => undefined);
-      }
+      const outlookContext = async () => {
+        if (teamsRuntime?.authenticated) return teamsRuntime.context;
+        if (!identityStorageState) {
+          logIdentityDiagnostic(
+            session.id,
+            "outlook",
+            "IDENTITY_SESSION_UNAVAILABLE",
+            { joinMode: "anonymous" },
+            "warn",
+          );
+          return null;
+        }
+        if (!identityRuntime) {
+          identityRuntime = await launchIdentityRuntime(identityStorageState).catch((error) => {
+            logIdentityDiagnostic(session.id, "outlook", "IDENTITY_BROWSER_LAUNCH_FAILED", {
+              error: error instanceof Error ? error.message : String(error),
+            }, "warn");
+            return null;
+          });
+        }
+        return identityRuntime?.context ?? null;
+      };
+
+      const probeOutlookInvitees = async (reason) => {
+        const context = await outlookContext();
+        if (!context) return [];
+        logIdentityDiagnostic(session.id, "outlook", "INVITEE_PROBE_TRIGGERED", { reason });
+        const emails = await readOutlookMeetingAttendeeEmails(context, session).catch((error) => {
+          logIdentityDiagnostic(session.id, "outlook", "INVITEE_PROBE_FAILED", {
+            reason,
+            error: error instanceof Error ? error.message : String(error),
+          }, "warn");
+          return [];
+        });
+        mergeAttendeeEmails(emails, "outlook");
+        return emails;
+      };
 
       const sampleRoster = async ({ probeIdentities = false } = {}) => {
         const roster = await readTeamsRosterSnapshot(teamsRuntime.page, {
           selfDisplayName: teamsDisplayName,
         });
+        const newParticipantNames = [];
         for (const name of roster.participantNames) {
           const key = name.trim().toLocaleLowerCase();
-          if (key && !rosterNames.has(key)) rosterNames.set(key, name.trim());
+          if (key && !rosterNames.has(key)) {
+            rosterNames.set(key, name.trim());
+            newParticipantNames.push(name.trim());
+          }
         }
-        if (probeIdentities && roster.participantNames.length > 0) {
+
+        if (newParticipantNames.length > 0) {
+          logIdentityDiagnostic(session.id, "teams", "NEW_PARTICIPANTS_OBSERVED", {
+            added: newParticipantNames.length,
+            seenParticipants: rosterNames.size,
+          });
+        }
+
+        const shouldProbeIdentities =
+          (probeIdentities || newParticipantNames.length > 0) &&
+          rosterNames.size > 0;
+
+        if (shouldProbeIdentities) {
           identityProbeAttempts += 1;
-          const emails = await readTeamsParticipantEmails(teamsRuntime.page, {
+
+          const teamsEmails = await readTeamsParticipantEmails(teamsRuntime.page, {
             participantNames: roster.participantNames,
             maxProfiles: 6,
-          }).catch(() => []);
-          mergeAttendeeEmails(emails);
+            sessionId: session.id,
+          }).catch((error) => {
+            logIdentityDiagnostic(session.id, "teams", "PROBE_CALL_FAILED", {
+              error: error instanceof Error ? error.message : String(error),
+            }, "warn");
+            return [];
+          });
+          mergeAttendeeEmails(teamsEmails, "teams");
+
           if (
-            teamsRuntime.authenticated &&
             attendeeEmails.size === 0 &&
             identityProbeAttempts >= 3 &&
             !identityWarningIssued
           ) {
             identityWarningIssued = true;
-            console.warn(
-              `[meeting-bot] session ${session.id}: participant email extraction is degraded; ` +
-              "recording/STT continues, but automatic shared-room access may be incomplete.",
+            logIdentityDiagnostic(
+              session.id,
+              "session",
+              "IDENTITY_DEGRADED",
+              {
+                attempts: identityProbeAttempts,
+                participants: rosterNames.size,
+                totalEmails: attendeeEmails.size,
+                note: "recording/STT continues; automatic shared-room access may be incomplete",
+              },
+              "warn",
             );
           }
         }
+
         if (roster.activeSpeakerNames.length > 0) {
           speakerObservations.push({
             atMs: Math.max(0, Date.now() - captureStartedAtMs),
@@ -186,6 +301,8 @@ export function createBotSessionRunner(config) {
             speakerObservations.splice(0, speakerObservations.length - MAX_SPEAKER_OBSERVATIONS);
           }
         }
+
+        return { newParticipantNames, currentParticipantNames: roster.participantNames };
       };
       const rosterPayload = () => ({
         participantNames: [...rosterNames.values()],
@@ -193,7 +310,14 @@ export function createBotSessionRunner(config) {
         speakerObservations: [...speakerObservations],
       });
 
-      await sampleRoster({ probeIdentities: true }).catch(() => undefined);
+      await probeOutlookInvitees("capture-start");
+      nextOutlookProbeAt = Date.now() + 5 * 60_000;
+
+      await sampleRoster({ probeIdentities: true }).catch((error) => {
+        logIdentityDiagnostic(session.id, "session", "INITIAL_IDENTITY_PROBE_FAILED", {
+          error: error instanceof Error ? error.message : String(error),
+        }, "warn");
+      });
       nextIdentityProbeAt = Date.now() + IDENTITY_PROBE_MS;
       let aloneState = initialAloneState();
       let seenOtherParticipant = false;
@@ -270,9 +394,18 @@ export function createBotSessionRunner(config) {
           break;
         }
         const nowMs = Date.now();
-        const probeIdentities = nowMs >= nextIdentityProbeAt;
-        await sampleRoster({ probeIdentities }).catch(() => undefined);
-        if (probeIdentities) nextIdentityProbeAt = nowMs + IDENTITY_PROBE_MS;
+        const periodicIdentityProbe = nowMs >= nextIdentityProbeAt;
+        const periodicOutlookProbe = nowMs >= nextOutlookProbeAt;
+        if (periodicOutlookProbe) {
+          await probeOutlookInvitees("periodic");
+          nextOutlookProbeAt = nowMs + 5 * 60_000;
+        }
+        await sampleRoster({ probeIdentities: periodicIdentityProbe }).catch((error) => {
+          logIdentityDiagnostic(session.id, "session", "IDENTITY_PROBE_FAILED", {
+            error: error instanceof Error ? error.message : String(error),
+          }, "warn");
+        });
+        if (periodicIdentityProbe) nextIdentityProbeAt = nowMs + IDENTITY_PROBE_MS;
         if (isMaxDurationExceeded(captureStartedAtMs, nowMs, maxDurationMs)) {
           exitMessage = "The bot reached the maximum configured meeting duration.";
           break;
@@ -322,17 +455,39 @@ export function createBotSessionRunner(config) {
           break;
         }
         const persistRoster = nowMs >= nextRosterPersistAt || identityDirty;
+        const persistingIdentityChange = identityDirty;
+        if (persistingIdentityChange) {
+          logIdentityDiagnostic(session.id, "session", "PERSIST_REQUESTED", {
+            totalEmails: attendeeEmails.size,
+          });
+        }
         await heartbeat.update("CAPTURING", {
           meetingId: recorder.meetingId,
           ...(persistRoster ? rosterPayload() : {}),
         });
         if (persistRoster) {
           nextRosterPersistAt = nowMs + ROSTER_PERSIST_MS;
+          if (persistingIdentityChange) {
+            logIdentityDiagnostic(session.id, "session", "PERSIST_CONFIRMED", {
+              totalEmails: attendeeEmails.size,
+            });
+          }
           identityDirty = false;
         }
         await sleep(pollMs);
       }
       const recordedMs = Date.now() - captureStartedAtMs;
+      await probeOutlookInvitees("meeting-end");
+      await sampleRoster({ probeIdentities: true }).catch((error) => {
+        logIdentityDiagnostic(session.id, "session", "FINAL_IDENTITY_PROBE_FAILED", {
+          error: error instanceof Error ? error.message : String(error),
+        }, "warn");
+      });
+      logIdentityDiagnostic(session.id, "session", "FINAL_STATE", {
+        participants: rosterNames.size,
+        attendeeEmails: attendeeEmails.size,
+        probes: identityProbeAttempts,
+      });
       await heartbeat.update("STOP_REQUESTED", {
         meetingId: recorder.meetingId,
         ...rosterPayload(),
@@ -374,8 +529,9 @@ export function createBotSessionRunner(config) {
       heartbeat.stop();
       await recorderRuntime.dispose(recorder);
       await closeTeams(teamsRuntime);
+      await closeIdentityRuntime(identityRuntime);
       await sink?.dispose().catch(() => undefined);
     }
   }
-  return { runSession, ACTIVE_STATUSES };
+  return { runSession, ACTIVE_STATUSES, setIdentityStorageState };
 }

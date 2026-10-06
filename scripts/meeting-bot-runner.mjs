@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { getTeamsStorageState, resolveTeamsAuthMode } from "./meeting-bot-auth-state.mjs";
+import {
+  getIdentityStorageState,
+  getTeamsStorageState,
+  resolveTeamsAuthMode,
+} from "./meeting-bot-auth-state.mjs";
 import { createCalendarSync, hasCalendarConfig } from "./meeting-bot-calendar.mjs";
 import { computeProcessingTimeoutMs } from "./meeting-bot-lifecycle.mjs";
 import { createMeetingRecorderRuntime } from "./meeting-bot-recorder.mjs";
@@ -135,6 +139,7 @@ const sessionRunner = createBotSessionRunner({
     process.env.MEETING_BOT_AUDIO_SILENCE_MS,
     3 * 60_000,
   ),
+  identityStorageState: undefined,
 });
 
 async function main() {
@@ -143,7 +148,12 @@ async function main() {
   }
 
   const teamsStorageState = await getTeamsStorageState();
+  const identityStorageState = await getIdentityStorageState();
+  sessionRunner.setIdentityStorageState(identityStorageState);
   console.log(`[meeting-bot] Teams join mode: ${teamsAuthMode}.`);
+  console.log(
+    `[meeting-bot] Outlook identity session: ${identityStorageState ? "available" : "unavailable"}.`,
+  );
   if (teamsAuthMode === "authenticated" && configuredMaxConcurrency > 1) {
     console.log(
       "[meeting-bot] Authenticated mode currently uses one account, so concurrency is clamped to 1.",
