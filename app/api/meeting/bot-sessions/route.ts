@@ -5,6 +5,11 @@ import { serializeMeetingBotSession } from "@/lib/meeting/bot/serialize";
 import type { MeetingBotStatus } from "@/lib/meeting/bot/types";
 import { maybePruneTerminalBotSessions } from "@/lib/meeting/bot/pruneBotSessions";
 import { parseBotScheduledAt } from "@/lib/meeting/bot/schedule";
+import {
+  cleanMeetingTitle,
+  normalizeTeamsMeetingUrl,
+  teamsMeetingIdentity,
+} from "@/lib/meeting/bot/teamsUrl";
 
 const ACTIVE_STATUSES: MeetingBotStatus[] = [
   "REQUESTED",
@@ -15,28 +20,6 @@ const ACTIVE_STATUSES: MeetingBotStatus[] = [
   "CAPTURING",
   "STOP_REQUESTED",
 ];
-
-function normalizeTeamsMeetingUrl(value: string): string | null {
-  try {
-    const url = new URL(value);
-    const isTeamsHost = url.protocol === "https:" && [
-      "teams.microsoft.com",
-      "teams.live.com",
-      "teams.cloud.microsoft",
-    ].some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`));
-    if (!isTeamsHost) return null;
-    url.hash = "";
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
-function serializeTitle(value: unknown): string {
-  if (typeof value !== "string") return "Teams Meeting";
-  const title = value.trim().replace(/\s+/g, " ");
-  return title.slice(0, 180) || "Teams Meeting";
-}
 
 export async function GET(req: NextRequest) {
   const email = await resolveMeetingCallerEmail(req);
@@ -63,8 +46,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const meetingUrl = typeof body.meetingUrl === "string" ? body.meetingUrl.trim() : "";
-  const normalizedMeetingUrl = normalizeTeamsMeetingUrl(meetingUrl);
+  const normalizedMeetingUrl = normalizeTeamsMeetingUrl(body.meetingUrl);
   if (!normalizedMeetingUrl) {
     return NextResponse.json({ error: "A valid Microsoft Teams meeting URL is required." }, { status: 400 });
   }
@@ -74,21 +56,49 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsedSchedule.error }, { status: 400 });
   }
 
-  const existing = await prisma.meetingBotSession.findFirst({
-    where: { ownerEmail: email, meetingUrl: normalizedMeetingUrl, status: { in: ACTIVE_STATUSES } },
-    orderBy: { createdAt: "desc" },
-  });
-  if (existing) return NextResponse.json(serializeMeetingBotSession(existing), { status: 200 });
+  const meetingIdentity = teamsMeetingIdentity(normalizedMeetingUrl);
+  if (!meetingIdentity) {
+    return NextResponse.json({ error: "A valid Microsoft Teams meeting URL is required." }, { status: 400 });
+  }
 
-  const session = await prisma.meetingBotSession.create({
-    data: {
-      ownerEmail: email,
-      meetingUrl: normalizedMeetingUrl,
-      title: serializeTitle(body.title),
-      scheduledAt: parsedSchedule.scheduledAt,
-    },
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-bot:${meetingIdentity}`}))`;
+    const candidates = await tx.meetingBotSession.findMany({
+      where: { status: { in: ACTIVE_STATUSES } },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
+    const existing = candidates.find(
+      (session) => teamsMeetingIdentity(session.meetingUrl) === meetingIdentity,
+    );
+    if (existing) {
+      return {
+        kind: existing.ownerEmail.toLowerCase() === email ? "owned-existing" as const : "foreign-existing" as const,
+        session: existing,
+      };
+    }
+
+    const session = await tx.meetingBotSession.create({
+      data: {
+        ownerEmail: email,
+        meetingUrl: normalizedMeetingUrl,
+        title: cleanMeetingTitle(body.title),
+        scheduledAt: parsedSchedule.scheduledAt,
+      },
+    });
+    return { kind: "created" as const, session };
   });
-  return NextResponse.json(serializeMeetingBotSession(session), { status: 201 });
+
+  if (result.kind === "foreign-existing") {
+    return NextResponse.json(
+      { error: "A meeting bot is already active or queued for this Teams meeting." },
+      { status: 409 },
+    );
+  }
+  return NextResponse.json(
+    serializeMeetingBotSession(result.session),
+    { status: result.kind === "created" ? 201 : 200 },
+  );
 }
 
 /** Clears every finished session for the caller; active sessions are never touched. */
