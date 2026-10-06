@@ -54,6 +54,7 @@ describe("meeting bot recorder token", () => {
     delete process.env.NEXTAUTH_SECRET;
     delete process.env.MEETING_BOT_MAX_DURATION_MS;
     delete process.env.MEETING_BOT_RECORDER_TOKEN_TTL_SEC;
+    delete process.env.MEETING_BOT_PROCESSING_TIMEOUT_MAX_MS;
   });
 
   it("keeps the default recorder JWT lifetime at six hours", async () => {
@@ -74,10 +75,19 @@ describe("meeting bot recorder token", () => {
     expect(body.token).toBe("encoded-token");
     expect(Date.parse(body.expiresAt) / 1000 - options.token.iat).toBe(TOKEN_TTL_SEC);
   });
-  it("extends the token beyond six hours when a longer meeting is explicitly allowed", () => {
+  it("extends the token through finalization and the maximum processing window", () => {
     expect(recorderTokenTtlSec({
       MEETING_BOT_MAX_DURATION_MS: String(8 * 60 * 60_000),
-    } as NodeJS.ProcessEnv)).toBe(8 * 60 * 60 + 30 * 60);
+      MEETING_BOT_PROCESSING_TIMEOUT_MAX_MS: String(90 * 60_000),
+    } as NodeJS.ProcessEnv)).toBe(10 * 60 * 60);
+  });
+
+  it("does not allow an explicit TTL to undercut the safe runtime window", () => {
+    expect(recorderTokenTtlSec({
+      MEETING_BOT_MAX_DURATION_MS: String(4 * 60 * 60_000),
+      MEETING_BOT_PROCESSING_TIMEOUT_MAX_MS: String(90 * 60_000),
+      MEETING_BOT_RECORDER_TOKEN_TTL_SEC: String(60 * 60),
+    } as NodeJS.ProcessEnv)).toBe(6 * 60 * 60);
   });
 
   it("caps recorder JWT lifetime at 24 hours", () => {
