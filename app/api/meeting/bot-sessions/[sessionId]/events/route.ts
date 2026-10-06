@@ -116,7 +116,7 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     const nextSession = await tx.meetingBotSession.findUniqueOrThrow({ where: { id: session.id } });
     if (status === "FAILED" && meetingId) {
       await tx.meeting.updateMany({
-        where: { id: meetingId, status: "UPLOADING" },
+        where: { id: meetingId, status: { in: ["UPLOADING", "PROCESSING"] } },
         data: { status: "FAILED", failureReason },
       });
     }
