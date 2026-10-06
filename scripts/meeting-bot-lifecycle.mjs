@@ -138,6 +138,17 @@ export function isAloneFromCount(count) {
 }
 
 /**
+ * Roster snapshots intentionally exclude the bot itself. Convert a positive
+ * count of observed *other* participants into the bot-inclusive room count
+ * expected by isAloneFromCount(). Zero remains unknown because an empty roster
+ * can also mean the Teams People selectors failed.
+ */
+export function participantCountFromRoster(otherParticipantCount) {
+  if (!Number.isInteger(otherParticipantCount) || otherParticipantCount <= 0) return null;
+  return otherParticipantCount + 1;
+}
+
+/**
  * True when a Meeting has been sitting in PROCESSING since before the
  * stale deadline (`nowMs - updatedAtMs >= staleMs`). Shared by the claim
  * route's recovery sweep and the reprocess route's "stuck, not just
