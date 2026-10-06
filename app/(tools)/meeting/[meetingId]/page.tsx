@@ -14,6 +14,7 @@ import { MeetingDetailSkeleton } from "./components/MeetingDetailSkeleton";
 import { MeetingMockResultBanner } from "./components/MeetingMockResultBanner";
 import { MeetingAudioExpiryBanner } from "./components/MeetingAudioExpiryBanner";
 import { MeetingAudioOnlyBanner } from "./components/MeetingAudioOnlyBanner";
+import { MeetingPostprocessRecovery } from "./components/MeetingPostprocessRecovery";
 import { isAudioOnlyResult } from "@/lib/meeting/audio/audioOnly";
 import { computeAudioExpiry } from "@/lib/meeting/audioRetention";
 import { useAudioRetentionDays } from "@/lib/meeting/useAudioRetentionDays";
@@ -259,6 +260,14 @@ export default function MeetingResultPage() {
 							</div>
 						)}
 						<MeetingAudioPlayer audioUrl={detail.audioUrl} meetingTitle={detail.title} audioExpiry={audioExpiry} />
+						<MeetingPostprocessRecovery
+							detail={detail}
+							onRefresh={(next) => {
+								meetingDetailCache.set(meetingId, next);
+								setDetail(next);
+								emitMeetingRenamed(meetingId, next.title);
+							}}
+						/>
 						{detail.isMockResult && <MeetingMockResultBanner meetingId={meetingId} />}
 						<MeetingAudioExpiryBanner meeting={detail} />
 						<div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
