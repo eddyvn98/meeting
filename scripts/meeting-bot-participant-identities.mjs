@@ -230,12 +230,19 @@ async function clickFirstVisible(locator) {
  */
 export async function readOutlookMeetingAttendeeEmails(context, session, {
   timeoutMs = 15_000,
+  maxCandidates = 12,
 } = {}) {
   const sessionId = session?.id || "unknown";
   if (!context || !session?.title) {
     logIdentityDiagnostic(sessionId, "outlook", "MISSING_CONTEXT_OR_TITLE", {}, "warn");
     return [];
   }
+  const expectedJoinIdentity = teamsJoinIdentity(session.meetingUrl);
+  if (!expectedJoinIdentity) {
+    logIdentityDiagnostic(sessionId, "outlook", "INVALID_SESSION_JOIN_URL", {}, "warn");
+    return [];
+  }
+
   logIdentityDiagnostic(sessionId, "outlook", "PROBE_START", {
     title: session.title,
   });
@@ -246,6 +253,36 @@ export async function readOutlookMeetingAttendeeEmails(context, session, {
     return null;
   });
   if (!page) return [];
+
+  const inspectOpenEvent = async () => {
+    await page.waitForTimeout(350).catch(() => undefined);
+    const expand = page.getByRole("button", {
+      name: /show all|view all|attendees|participants|người tham dự|người tham gia/i,
+    });
+    await clickFirstVisible(expand).catch(() => false);
+    await page.waitForTimeout(150).catch(() => undefined);
+
+    const dialogs = page.locator('[role="dialog"]:visible');
+    const dialogCount = Math.min(await dialogs.count().catch(() => 0), 5);
+    for (let index = 0; index < dialogCount; index += 1) {
+      const dialog = dialogs.nth(index);
+      const joinLinks = dialog.locator(
+        'a[href*="teams.microsoft.com" i], a[href*="teams.live.com" i], a[href*="teams.cloud.microsoft" i]',
+      );
+      const joinCount = Math.min(await joinLinks.count().catch(() => 0), 20);
+      let matches = false;
+      for (let linkIndex = 0; linkIndex < joinCount; linkIndex += 1) {
+        const href = await joinLinks.nth(linkIndex).getAttribute("href").catch(() => null);
+        if (teamsJoinIdentity(href) === expectedJoinIdentity) {
+          matches = true;
+          break;
+        }
+      }
+      if (!matches) continue;
+      return { matched: true, emails: await outlookAttendeeEmails(dialog), dialogCount };
+    }
+    return { matched: false, emails: [], dialogCount };
+  };
 
   try {
     await page.goto("https://outlook.office.com/calendar/view/day", {
@@ -259,82 +296,70 @@ export async function readOutlookMeetingAttendeeEmails(context, session, {
       return [];
     }
 
-    const exact = page.getByText(session.title, { exact: true });
-    let opened = await clickFirstVisible(exact);
-    if (!opened) {
-      const partial = page.getByText(session.title, { exact: false });
-      opened = await clickFirstVisible(partial);
+    const candidateGroups = [
+      page.getByText(session.title, { exact: true }),
+      page.getByText(session.title, { exact: false }),
+    ];
+    let attempted = 0;
+    let sawCandidate = false;
+
+    for (const candidates of candidateGroups) {
+      const count = Math.min(await candidates.count().catch(() => 0), maxCandidates - attempted);
+      for (let index = 0; index < count && attempted < maxCandidates; index += 1) {
+        const candidate = candidates.nth(index);
+        if (!await candidate.isVisible().catch(() => false)) continue;
+        sawCandidate = true;
+        attempted += 1;
+
+        const opened = await candidate.click({ timeout: 2_000 })
+          .then(() => true)
+          .catch(() => false);
+        if (!opened) continue;
+
+        logIdentityDiagnostic(sessionId, "outlook", "EVENT_CANDIDATE_OPENED", {
+          title: session.title,
+          candidate: attempted,
+        });
+
+        const inspected = await inspectOpenEvent();
+        if (inspected.matched) {
+          logIdentityDiagnostic(sessionId, "outlook", "JOIN_URL_MATCHED", {
+            candidate: attempted,
+            dialogs: inspected.dialogCount,
+          });
+          logIdentityDiagnostic(
+            sessionId,
+            "outlook",
+            inspected.emails.length > 0 ? "PROBE_SUCCESS" : "VERIFIED_EVENT_NO_EMAIL",
+            { emails: inspected.emails.length, candidate: attempted },
+            inspected.emails.length > 0 ? "log" : "warn",
+          );
+          if (inspected.emails.length === 0) {
+            await captureIdentityScreenshot(page, sessionId, "outlook-verified-event-no-email");
+          }
+          return inspected.emails;
+        }
+
+        logIdentityDiagnostic(sessionId, "outlook", "CANDIDATE_JOIN_URL_MISMATCH", {
+          candidate: attempted,
+        }, "warn");
+        await page.keyboard.press("Escape").catch(() => undefined);
+        await page.waitForTimeout(150).catch(() => undefined);
+      }
+      if (attempted >= maxCandidates) break;
     }
-    if (!opened) {
+
+    if (!sawCandidate) {
       logIdentityDiagnostic(sessionId, "outlook", "EVENT_NOT_FOUND", { title: session.title }, "warn");
       await captureIdentityScreenshot(page, sessionId, "outlook-event-not-found");
       return [];
     }
-    logIdentityDiagnostic(sessionId, "outlook", "EVENT_OPENED", { title: session.title });
 
-    await page.waitForTimeout(400).catch(() => undefined);
-
-    // Expand attendee details when Outlook exposes a semantic button.
-    const expand = page.getByRole("button", {
-      name: /show all|view all|attendees|participants|người tham dự|người tham gia/i,
-    });
-    const expanded = await clickFirstVisible(expand).catch(() => false);
-    logIdentityDiagnostic(sessionId, "outlook", expanded ? "ATTENDEES_EXPANDED" : "ATTENDEES_EXPAND_NOT_FOUND");
-    await page.waitForTimeout(200).catch(() => undefined);
-
-    const dialogs = page.locator('[role="dialog"]:visible');
-    const expectedJoinIdentity = teamsJoinIdentity(session.meetingUrl);
-    if (!expectedJoinIdentity) {
-      logIdentityDiagnostic(sessionId, "outlook", "INVALID_SESSION_JOIN_URL", {}, "warn");
-      return [];
-    }
-
-    const emails = new Set();
-    let matchedMeeting = false;
-    const dialogCount = Math.min(await dialogs.count().catch(() => 0), 5);
-    for (let index = 0; index < dialogCount; index += 1) {
-      const dialog = dialogs.nth(index);
-      const joinLinks = dialog.locator(
-        'a[href*="teams.microsoft.com" i], a[href*="teams.live.com" i], a[href*="teams.cloud.microsoft" i]',
-      );
-      const joinCount = Math.min(await joinLinks.count().catch(() => 0), 20);
-      let thisDialogMatches = false;
-      for (let linkIndex = 0; linkIndex < joinCount; linkIndex += 1) {
-        const href = await joinLinks.nth(linkIndex).getAttribute("href").catch(() => null);
-        if (teamsJoinIdentity(href) === expectedJoinIdentity) {
-          matchedMeeting = true;
-          thisDialogMatches = true;
-          break;
-        }
-      }
-      if (!thisDialogMatches) continue;
-
-      const attendeeEmails = await outlookAttendeeEmails(dialog);
-      mergeEmails(emails, attendeeEmails);
-      logIdentityDiagnostic(sessionId, "outlook", "INVITEE_EMAILS_EXTRACTED", {
-        emails: attendeeEmails.length,
-      });
-    }
-
-    // Title alone is not an authorization identity: duplicate meeting titles
-    // are common. Refuse Outlook-derived emails unless the event's Teams join
-    // URL matches the bot session. Once verified, the event invitation list is
-    // allowed to grant shared-room access even to invitees who never join.
-    if (!matchedMeeting) {
-      logIdentityDiagnostic(sessionId, "outlook", "JOIN_URL_MISMATCH", {
-        dialogs: dialogCount,
-      }, "warn");
-      await captureIdentityScreenshot(page, sessionId, "outlook-join-url-mismatch");
-      return [];
-    }
-    logIdentityDiagnostic(sessionId, "outlook", emails.size > 0 ? "PROBE_SUCCESS" : "VERIFIED_EVENT_NO_EMAIL", {
-      emails: emails.size,
-      dialogs: dialogCount,
-    }, emails.size > 0 ? "log" : "warn");
-    if (emails.size === 0) {
-      await captureIdentityScreenshot(page, sessionId, "outlook-verified-event-no-email");
-    }
-    return [...emails];
+    logIdentityDiagnostic(sessionId, "outlook", "JOIN_URL_MISMATCH", {
+      candidatesTried: attempted,
+    }, "warn");
+    await captureIdentityScreenshot(page, sessionId, "outlook-join-url-mismatch");
+    return [];
   } catch (error) {
     logIdentityDiagnostic(sessionId, "outlook", "PROBE_EXCEPTION", {
       error: error instanceof Error ? error.message : String(error),
