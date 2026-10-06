@@ -22,6 +22,7 @@ import {
 } from "./meeting-bot-recovery.mjs";
 import {
   ensurePeoplePanelOpen,
+  ensureInCallMediaOff,
   errorCode,
   prepareTeamsPage,
   readTeamsPage,
@@ -112,6 +113,7 @@ export function createBotSessionRunner(config) {
       timeoutMs,
     });
     if (joined) {
+      await ensureInCallMediaOff(runtime.page, { required: requireMediaOff });
       await ensurePeoplePanelOpen(runtime.page).catch(() => false);
     }
     return joined;
