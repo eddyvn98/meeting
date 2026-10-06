@@ -7,7 +7,7 @@ export function createSessionControl({
   controlOutageGraceMs = 60_000,
   now = Date.now,
 }) {
-  let controlFailureSince = null;
+  const controlFailureSince = new Map();
   function createHeartbeat(sessionId) {
     let acknowledgedStatus = "CLAIMED";
     let rememberedStatus = "CLAIMED";
@@ -69,7 +69,7 @@ export function createSessionControl({
       );
       if (!session) throw new Error("Bot session control response was empty.");
 
-      controlFailureSince = null;
+      controlFailureSince.delete(sessionId);
       const leaseLost =
         session.runnerId !== runnerId ||
         ["REQUESTED", "ENDED", "FAILED"].includes(session.status);
@@ -84,8 +84,9 @@ export function createSessionControl({
       return session.status === "STOP_REQUESTED";
     } catch (error) {
       if (errorCode(error) === "SESSION_LEASE_LOST") throw error;
-      controlFailureSince ??= now();
-      if (now() - controlFailureSince >= controlOutageGraceMs) {
+      const failedSince = controlFailureSince.get(sessionId) ?? now();
+      controlFailureSince.set(sessionId, failedSince);
+      if (now() - failedSince >= controlOutageGraceMs) {
         const unavailable = new Error(
           "Meeting bot control plane stayed unreachable past the safety grace period.",
         );
