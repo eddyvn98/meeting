@@ -2,20 +2,23 @@ import { errorCode } from "./meeting-bot-teams.mjs";
 
 export function createSessionControl({ api, emit, runnerId }) {
   function createHeartbeat(sessionId) {
-    let status = "CLAIMED";
-    let extra = {};
+    let acknowledgedStatus = "CLAIMED";
+    let rememberedStatus = "CLAIMED";
+    let rememberedExtra = {};
     let stopped = false;
     let queue = Promise.resolve();
 
     const send = (nextStatus, nextExtra = {}, { remember = true } = {}) => {
-      const expectedStatus = status;
       if (remember) {
-        status = nextStatus;
-        extra = nextExtra;
+        rememberedStatus = nextStatus;
+        rememberedExtra = nextExtra;
       }
       const run = queue.then(async () => {
+        const expectedStatus = acknowledgedStatus;
         try {
-          return await emit(sessionId, nextStatus, { ...nextExtra, expectedStatus });
+          const current = await emit(sessionId, nextStatus, { ...nextExtra, expectedStatus });
+          if (current?.status) acknowledgedStatus = current.status;
+          return current;
         } catch (error) {
           if (error && typeof error === "object" && error.status === 409) {
             const current = await api(
@@ -25,6 +28,7 @@ export function createSessionControl({ api, emit, runnerId }) {
               current?.runnerId === runnerId &&
               (current.status === nextStatus || current.status === "STOP_REQUESTED")
             ) {
+              acknowledgedStatus = current.status;
               return current;
             }
           }
@@ -37,7 +41,7 @@ export function createSessionControl({ api, emit, runnerId }) {
 
     const timer = setInterval(() => {
       if (stopped) return;
-      void send(status, extra, { remember: false }).catch(() => undefined);
+      void send(rememberedStatus, rememberedExtra, { remember: false }).catch(() => undefined);
     }, 15_000);
 
     return {
