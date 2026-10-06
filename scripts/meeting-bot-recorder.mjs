@@ -136,8 +136,14 @@ export function createMeetingRecorderRuntime({
     }).catch(() => null);
   }
 
-  async function finish(recorder, { timeoutMs = 11 * 60_000 } = {}) {
+  async function finish(
+    recorder,
+    { timeoutMs = 11 * 60_000, skipFullAudio = false } = {},
+  ) {
     if (!isAlive(recorder)) throw codedError("RECORDER_CRASHED", "Recorder browser closed before finalization.");
+    await recorder.page.evaluate((skip) => {
+      window.__meetingBotSkipFullAudio = skip === true;
+    }, skipFullAudio).catch(() => undefined);
     const endButton = recorder.page.getByRole("button", { name: /End Meeting/i }).first();
     if (!(await endButton.isVisible().catch(() => false))) {
       throw new Error("The recorder end control is unavailable.");
