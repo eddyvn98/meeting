@@ -1,4 +1,4 @@
-import { canonicalMeetingEmail, sanitizeMeetingAttendeeEmails } from "./attendeeEmails";
+import { canonicalMeetingEmail } from "./attendeeEmails";
 
 export type CalendarSyncEvent = {
   eventId?: unknown;
