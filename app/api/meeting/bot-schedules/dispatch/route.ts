@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
 
   for (const candidate of due) {
     await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-bot-schedule:${candidate.id}`}))`;
       const schedule = await tx.meetingBotSchedule.findUnique({ where: { id: candidate.id } });
       if (!schedule?.enabled || !schedule.nextRunAt || schedule.nextRunAt > dispatchBefore) return;
 
