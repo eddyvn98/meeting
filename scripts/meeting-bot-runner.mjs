@@ -39,7 +39,8 @@ const teamsDisplayName =
   process.env.MEETING_BOT_TEAMS_DISPLAY_NAME?.trim() || "Meeting STT Assistant";
 const browserChannel = process.env.MEETING_BOT_BROWSER_CHANNEL || undefined;
 const browserExecutable = process.env.MEETING_BOT_BROWSER_EXECUTABLE || undefined;
-const headless = process.env.MEETING_BOT_HEADLESS === "true";
+const headless = process.env.MEETING_BOT_HEADLESS !== "false";
+const requireMediaOff = process.env.MEETING_BOT_REQUIRE_MEDIA_OFF !== "false";
 
 const recorderRuntime = createMeetingRecorderRuntime({
   baseUrl,
@@ -61,6 +62,7 @@ const recorderRuntime = createMeetingRecorderRuntime({
     45 * 60_000,
   ),
   computeProcessingTimeoutMs,
+  headless,
 });
 
 function requiredEnv(name) {
@@ -120,6 +122,7 @@ const sessionRunner = createBotSessionRunner({
   browserChannel,
   browserExecutable,
   headless,
+  requireMediaOff,
   pollMs,
   lobbyTimeoutMs: positiveNumber(process.env.MEETING_BOT_LOBBY_TIMEOUT_MS, 15 * 60_000),
   reconnectTimeoutMs: positiveNumber(process.env.MEETING_BOT_RECONNECT_TIMEOUT_MS, 2 * 60_000),
@@ -145,6 +148,12 @@ const sessionRunner = createBotSessionRunner({
 async function main() {
   if (process.platform !== "linux") {
     throw new Error("The unattended meeting bot requires Linux with PulseAudio/PipeWire Pulse.");
+  }
+
+  if (!headless && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+    throw new Error(
+      "MEETING_BOT_HEADLESS=false requires DISPLAY or WAYLAND_DISPLAY. Use headless mode for unattended Linux.",
+    );
   }
 
   const teamsStorageState = await getTeamsStorageState();

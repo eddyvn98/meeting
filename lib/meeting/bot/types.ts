@@ -61,6 +61,7 @@ export interface MeetingBotSession {
 
 export interface MeetingBotEventInput {
   status: MeetingBotStatus;
+  expectedStatus?: MeetingBotStatus;
   meetingId?: string;
   errorMessage?: string;
   participantNames?: string[];

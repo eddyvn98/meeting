@@ -35,12 +35,13 @@ function sleep(ms) {
 }
 const ROSTER_PERSIST_MS = 30_000;
 const IDENTITY_PROBE_MS = 60_000;
+const IDENTITY_RETRY_COOLDOWN_MS = 2 * 60_000;
 const MAX_SPEAKER_OBSERVATIONS = 5_000;
 export function createBotSessionRunner(config) {
   let identityStorageState = config.identityStorageState;
   const {
     api, emit, recorderRuntime, runnerId, teamsDisplayName,
-    browserChannel, browserExecutable, headless, pollMs,
+    browserChannel, browserExecutable, headless, requireMediaOff, pollMs,
     lobbyTimeoutMs, reconnectTimeoutMs, rejoinWindowMs, rejoinAttemptMs,
     aloneTimeoutMs, initialAloneGraceMs, maxDurationMs, audioInitialWarnMs, audioSilenceWarnMs,
   } = config;
@@ -84,8 +85,6 @@ export function createBotSessionRunner(config) {
         "--disable-dev-shm-usage",
         "--autoplay-policy=no-user-gesture-required",
         "--disable-features=AudioServiceOutOfProcess",
-        "--use-fake-ui-for-media-stream",
-        "--use-fake-device-for-media-stream",
         "--disable-notifications",
       ],
     });
@@ -93,13 +92,6 @@ export function createBotSessionRunner(config) {
       storageState,
       viewport: { width: 1440, height: 1000 },
     });
-    for (const origin of [
-      "https://teams.microsoft.com",
-      "https://teams.live.com",
-      "https://teams.cloud.microsoft",
-    ]) {
-      await context.grantPermissions(["microphone", "camera"], { origin }).catch(() => undefined);
-    }
     const page = await context.newPage();
     return { browser, context, page, authenticated: Boolean(storageState) };
   }
@@ -108,7 +100,10 @@ export function createBotSessionRunner(config) {
     await runtime?.browser.close().catch(() => undefined);
   }
   async function joinTeams(runtime, session, heartbeat, timeoutMs = lobbyTimeoutMs) {
-    await prepareTeamsPage(runtime.page, session, teamsDisplayName, { authenticated: runtime.authenticated });
+    await prepareTeamsPage(runtime.page, session, teamsDisplayName, {
+      authenticated: runtime.authenticated,
+      requireMediaOff,
+    });
     return waitForTeamsJoin(runtime.page, {
       sessionId: session.id,
       updateStatus: heartbeat.update,
@@ -173,6 +168,7 @@ export function createBotSessionRunner(config) {
       let identityWarningIssued = false;
       let identityDirty = false;
       let nextOutlookProbeAt = 0;
+      const participantProbeState = new Map();
 
       const mergeAttendeeEmails = (emails, source = "unknown") => {
         const before = attendeeEmails.size;
@@ -259,10 +255,37 @@ export function createBotSessionRunner(config) {
         if (shouldProbeIdentities) {
           identityProbeAttempts += 1;
 
+          const probeNow = Date.now();
+          const newKeys = new Set(newParticipantNames.map((name) => name.trim().toLocaleLowerCase()));
+          const probeCandidates = roster.participantNames
+            .map((name, index) => {
+              const key = name.trim().toLocaleLowerCase();
+              const state = participantProbeState.get(key) ?? { lastProbedAt: 0, resolved: false };
+              return { name, key, index, ...state };
+            })
+            .filter((item) =>
+              !item.resolved &&
+              (item.lastProbedAt === 0 || probeNow - item.lastProbedAt >= IDENTITY_RETRY_COOLDOWN_MS)
+            )
+            .sort((a, b) => {
+              const aNew = newKeys.has(a.key) ? 0 : 1;
+              const bNew = newKeys.has(b.key) ? 0 : 1;
+              if (aNew !== bNew) return aNew - bNew;
+              if (a.lastProbedAt !== b.lastProbedAt) return a.lastProbedAt - b.lastProbedAt;
+              return a.index - b.index;
+            });
+
           const teamsEmails = await readTeamsParticipantEmails(teamsRuntime.page, {
-            participantNames: roster.participantNames,
+            participantNames: probeCandidates.map((item) => item.name),
             maxProfiles: 6,
             sessionId: session.id,
+            onParticipantProbed(name, { foundEmail }) {
+              const key = name.trim().toLocaleLowerCase();
+              participantProbeState.set(key, {
+                lastProbedAt: Date.now(),
+                resolved: Boolean(foundEmail),
+              });
+            },
           }).catch((error) => {
             logIdentityDiagnostic(session.id, "teams", "PROBE_CALL_FAILED", {
               error: error instanceof Error ? error.message : String(error),
@@ -349,6 +372,24 @@ export function createBotSessionRunner(config) {
         if (snapshot.state === "REJECTED") {
           exitMessage = "The bot was rejected from the Teams meeting.";
           break;
+        }
+        if (snapshot.state === "AUTH_REQUIRED") {
+          throw Object.assign(
+            new Error("The saved Microsoft/Teams session expired during capture."),
+            { code: "TEAMS_AUTH_REQUIRED" },
+          );
+        }
+        if (snapshot.state === "ACCESS_DENIED") {
+          throw Object.assign(
+            new Error("Teams access was denied during capture."),
+            { code: "TEAMS_ACCESS_DENIED" },
+          );
+        }
+        if (snapshot.state === "INVALID_LINK") {
+          throw Object.assign(
+            new Error("Teams reported that the active meeting link is invalid or unavailable."),
+            { code: "TEAMS_INVALID_LINK" },
+          );
         }
         if (snapshot.state === "LEFT" || snapshot.state === "MEETING_ENDED") {
           await recorderRuntime.pause(recorder);
@@ -499,12 +540,17 @@ export function createBotSessionRunner(config) {
       const timedOut = await recorderRuntime.waitForProcessing(
         recorder, session, heartbeat, recordedMs,
       );
-      await heartbeat.update("ENDED", {
-        meetingId: recorder.meetingId,
-        errorMessage: timedOut
-          ? "Processing timed out; the meeting was force-completed with a placeholder result."
-          : exitMessage ?? undefined,
-      });
+      if (timedOut) {
+        await heartbeat.update("FAILED", {
+          meetingId: recorder.meetingId,
+          errorMessage: "Processing timed out. The recording was preserved and can be retried.",
+        });
+      } else {
+        await heartbeat.update("ENDED", {
+          meetingId: recorder.meetingId,
+          errorMessage: exitMessage ?? undefined,
+        });
+      }
     } catch (error) {
       const code = errorCode(error);
       const errorMessage = error instanceof Error ? error.message : String(error);

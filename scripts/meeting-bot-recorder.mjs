@@ -13,6 +13,7 @@ export function createMeetingRecorderRuntime({
   processingTimeoutMaxMs,
   processingTimeoutDefaultMs,
   computeProcessingTimeoutMs,
+  headless = true,
 }) {
   const isInsecureLocalBaseUrl = baseUrl.startsWith("http://");
 
@@ -47,7 +48,7 @@ export function createMeetingRecorderRuntime({
     const browser = await chromium.launch({
       ...(browserChannel ? { channel: browserChannel } : {}),
       ...(browserExecutable ? { executablePath: browserExecutable } : {}),
-      headless: process.env.MEETING_BOT_HEADLESS === "true",
+      headless,
       env: { ...process.env, PULSE_SOURCE: sourceName },
       args: [
         "--no-sandbox",
@@ -194,10 +195,9 @@ export function createMeetingRecorderRuntime({
       return false;
     }
 
-    console.log(
-      `[meeting-bot] session ${session.id} processing timed out after ${timeoutMs}ms; forcing mock-complete.`,
+    console.error(
+      `[meeting-bot] session ${session.id} processing timed out after ${timeoutMs}ms; preserving audio and marking the run retryable.`,
     );
-    await requestContext.post(`${meetingUrl}/mock-complete`).catch(() => undefined);
     return true;
   }
 

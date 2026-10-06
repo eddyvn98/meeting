@@ -29,10 +29,16 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
   }
   if (!STOPPABLE.has(session.status)) return NextResponse.json(serializeMeetingBotSession(session));
 
-  const updated = await prisma.meetingBotSession.update({
-    where: { id: session.id },
+  const changed = await prisma.meetingBotSession.updateMany({
+    where: { id: session.id, status: session.status },
     data: { status: "STOP_REQUESTED", lastHeartbeatAt: new Date() },
   });
+  if (changed.count !== 1) {
+    const current = await prisma.meetingBotSession.findUnique({ where: { id: session.id } });
+    if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(serializeMeetingBotSession(current));
+  }
+  const updated = await prisma.meetingBotSession.findUniqueOrThrow({ where: { id: session.id } });
   return NextResponse.json(serializeMeetingBotSession(updated));
 }
 

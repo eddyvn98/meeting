@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isBotRunnerRequest, runnerId } from "../../_auth";
-import { MEETING_BOT_STATUSES, type MeetingBotEventInput } from "@/lib/meeting/bot/types";
+import { MEETING_BOT_STATUSES, type MeetingBotEventInput, type MeetingBotStatus } from "@/lib/meeting/bot/types";
+import { canTransitionMeetingBotStatus } from "@/lib/meeting/bot/statusTransitions";
 import { serializeMeetingBotSession } from "@/lib/meeting/bot/serialize";
 import { maybePruneTerminalBotSessions } from "@/lib/meeting/bot/pruneBotSessions";
 import { parseSpeakerObservations, sanitizeParticipantNames } from "@/lib/meeting/bot/rosterMapping";
@@ -22,17 +23,34 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
   if (typeof body.status !== "string" || !MEETING_BOT_STATUSES.includes(body.status as MeetingBotEventInput["status"])) {
     return NextResponse.json({ error: "A valid bot status is required." }, { status: 400 });
   }
+  if (
+    body.expectedStatus !== undefined &&
+    (typeof body.expectedStatus !== "string" ||
+      !MEETING_BOT_STATUSES.includes(body.expectedStatus as MeetingBotStatus))
+  ) {
+    return NextResponse.json({ error: "expectedStatus must be a valid bot status." }, { status: 400 });
+  }
 
   const session = await prisma.meetingBotSession.findUnique({ where: { id: params.sessionId } });
   if (!session) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (session.runnerId !== runnerId(req)) {
+  const requestRunnerId = runnerId(req);
+  if (session.runnerId !== requestRunnerId) {
     return NextResponse.json({ error: "Session is owned by another runner." }, { status: 409 });
   }
-  if (["ENDED", "FAILED"].includes(session.status)) {
-    return NextResponse.json(serializeMeetingBotSession(session));
+
+  const status = body.status as MeetingBotStatus;
+  const expectedStatus = (body.expectedStatus ?? session.status) as MeetingBotStatus;
+  if (session.status !== expectedStatus) {
+    return NextResponse.json(
+      { error: "Stale bot lifecycle update.", currentStatus: session.status, expectedStatus },
+      { status: 409 },
+    );
   }
-  if (session.status === "STOP_REQUESTED" && !["STOP_REQUESTED", "ENDED", "FAILED"].includes(body.status)) {
-    return NextResponse.json(serializeMeetingBotSession(session));
+  if (!canTransitionMeetingBotStatus(session.status as MeetingBotStatus, status)) {
+    return NextResponse.json(
+      { error: `Invalid bot lifecycle transition: ${session.status} -> ${status}.`, currentStatus: session.status },
+      { status: 409 },
+    );
   }
 
   if (body.participantNames !== undefined && !Array.isArray(body.participantNames)) {
@@ -62,14 +80,13 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     }
   }
 
-  const status = body.status as MeetingBotEventInput["status"];
   const failureReason = typeof body.errorMessage === "string" ? body.errorMessage.slice(0, 4000) : "The bot runner failed.";
   const updated = await prisma.$transaction(async (tx) => {
-    const nextSession = await tx.meetingBotSession.update({
-      where: { id: session.id },
+    const updatedCount = await tx.meetingBotSession.updateMany({
+      where: { id: session.id, runnerId: requestRunnerId, status: expectedStatus },
       data: {
         status,
-        runnerId: session.runnerId ?? runnerId(req),
+        runnerId: session.runnerId ?? requestRunnerId,
         meetingId: meetingId ?? undefined,
         participantNames,
         attendeeEmails,
@@ -90,14 +107,31 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
         endedAt: ["ENDED", "FAILED"].includes(status) ? new Date() : undefined,
       },
     });
+    if (updatedCount.count !== 1) {
+      const current = await tx.meetingBotSession.findUnique({ where: { id: session.id } });
+      const conflict = new Error("STALE_BOT_LIFECYCLE_UPDATE");
+      (conflict as Error & { currentStatus?: string }).currentStatus = current?.status;
+      throw conflict;
+    }
+    const nextSession = await tx.meetingBotSession.findUniqueOrThrow({ where: { id: session.id } });
     if (status === "FAILED" && meetingId) {
       await tx.meeting.updateMany({
-        where: { id: meetingId, status: "UPLOADING" },
+        where: { id: meetingId, status: { in: ["UPLOADING", "PROCESSING"] } },
         data: { status: "FAILED", failureReason },
       });
     }
     return nextSession;
+  }).catch(async (error) => {
+    if (error instanceof Error && error.message === "STALE_BOT_LIFECYCLE_UPDATE") {
+      const current = await prisma.meetingBotSession.findUnique({ where: { id: session.id } });
+      return NextResponse.json(
+        { error: "Stale bot lifecycle update.", currentStatus: current?.status ?? null, expectedStatus },
+        { status: 409 },
+      );
+    }
+    throw error;
   });
+  if (updated instanceof NextResponse) return updated;
   if (attendeeEmails !== undefined && updated.attendeeEmails.length > previousAttendeeCount) {
     console.log(
       `[meeting-bot][identity] session=${session.id} source=server code=ATTENDEE_EMAILS_PERSISTED ` +

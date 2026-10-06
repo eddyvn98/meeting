@@ -36,11 +36,55 @@ export async function clickIfVisible(page, patterns) {
   return false;
 }
 
+async function forceToggleOff(page, {
+  offNames,
+  onNames,
+  kind,
+  required,
+}) {
+  const offButton = page.getByRole("button", { name: offNames }).first();
+  if (await offButton.isVisible().catch(() => false)) return true;
+
+  const onButton = page.getByRole("button", { name: onNames }).first();
+  if (await onButton.isVisible().catch(() => false)) {
+    await onButton.click({ timeout: 3_000 }).catch(() => undefined);
+    await page.waitForTimeout(150).catch(() => undefined);
+    if (await offButton.isVisible().catch(() => false)) return true;
+  }
+
+  const pressed = page.locator(`button[aria-pressed="false"][aria-label*="${kind}" i]`).first();
+  if (await pressed.isVisible().catch(() => false)) return true;
+
+  if (required) {
+    throw codedError(
+      "TEAMS_MEDIA_STATE_UNVERIFIED",
+      `Teams ${kind} could not be confirmed OFF before joining.`,
+    );
+  }
+  return false;
+}
+
+export async function ensurePreJoinMediaOff(page, { required = true } = {}) {
+  const microphoneOff = await forceToggleOff(page, {
+    kind: "microphone",
+    offNames: /unmute|turn microphone on|bật tiếng|bật mic/i,
+    onNames: /mute|turn microphone off|tắt tiếng|tắt mic/i,
+    required,
+  });
+  const cameraOff = await forceToggleOff(page, {
+    kind: "camera",
+    offNames: /turn camera on|bật camera|bật video/i,
+    onNames: /turn camera off|tắt camera|tắt video/i,
+    required,
+  });
+  return { microphoneOff, cameraOff };
+}
+
 export async function prepareTeamsPage(
   page,
   session,
   displayName,
-  { authenticated = false } = {},
+  { authenticated = false, requireMediaOff = true } = {},
 ) {
   if (page.isClosed()) throw codedError("TEAMS_PAGE_CLOSED", "Teams page is closed.");
   await page.goto(session.meetingUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
@@ -81,7 +125,9 @@ export async function prepareTeamsPage(
     if (await nameInput.isVisible().catch(() => false)) await nameInput.fill(displayName);
   }
 
-  await clickIfVisible(page, [/Join now/i, /Tham gia ngay/i, /^Join$/i, /^Rejoin$/i, /Tham gia lại/i]);
+  await ensurePreJoinMediaOff(page, { required: requireMediaOff });
+  const joined = await clickIfVisible(page, [/Join now/i, /Tham gia ngay/i, /^Join$/i, /^Rejoin$/i, /Tham gia lại/i]);
+  if (!joined) throw codedError("TEAMS_JOIN_CONTROL_MISSING", "Teams join control is unavailable.");
 }
 
 export async function teamsJoined(page) {
