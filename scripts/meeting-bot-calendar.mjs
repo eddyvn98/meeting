@@ -68,7 +68,12 @@ export function graphDateTimeToIso(value) {
   if (typeof raw !== "string" || !raw.trim()) return null;
   const timeZone = typeof value?.timeZone === "string" ? value.timeZone.trim().toUpperCase() : "";
   const hasOffset = /(?:Z|[+-]\d{2}:\d{2})$/i.test(raw);
-  const normalized = hasOffset ? raw : timeZone === "UTC" ? `${raw}Z` : raw;
+  // calendarView is requested with Prefer: outlook.timezone="UTC". If Graph
+  // ever returns an offset-less non-UTC wall clock anyway, interpreting it
+  // with new Date(raw) would silently use the runner host timezone and could
+  // join the meeting hours early/late. Reject that ambiguous value instead.
+  if (!hasOffset && timeZone !== "UTC") return null;
+  const normalized = hasOffset ? raw : `${raw}Z`;
   const date = new Date(normalized);
   return Number.isNaN(date.valueOf()) ? null : date.toISOString();
 }
