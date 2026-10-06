@@ -71,6 +71,10 @@ export interface Meeting {
   /** True when the caller has participant/share access rather than being the
    *  administrative owner — lets the sidebar avoid owner-only actions. */
   sharedWithMe?: boolean;
+  /** True when access comes only from Teams calendar attendance (no explicit
+   *  MeetingShare). These rows are readable but do not currently have a
+   *  per-user folder-placement record, so the sidebar hides move-to-group. */
+  attendeeOnlyAccess?: boolean;
   /** Sidebar folder this meeting is filed under for the current caller, or
    *  null when ungrouped. For owned meetings this comes from Meeting.groupId;
    *  for shared-with-me rows GET /api/meeting overlays MeetingShare.groupId so
