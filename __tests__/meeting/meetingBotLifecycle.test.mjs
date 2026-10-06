@@ -25,6 +25,10 @@ describe("Teams lifecycle classification", () => {
     expect(parseParticipantCount("Người tham gia (5)")).toBe(5);
     expect(parseParticipantCount("2 người tham gia")).toBe(2);
     expect(isAloneFromCount(parseParticipantCount("1 người"))).toBe(true);
+    // Roster snapshots intentionally exclude the bot itself. Callers that
+    // fall back to roster length must add one before using this total-count
+    // predicate: one observed human + bot is not an alone call.
+    expect(isAloneFromCount(1 + 1)).toBe(false);
   });
 
   it("only ends after one continuous alone streak", () => {
