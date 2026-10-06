@@ -51,6 +51,7 @@ const RECORDER_MEETING_ROUTES = new Map<string, ReadonlySet<string>>([
   ["full-audio", new Set(["POST"])],
   ["finalize", new Set(["POST"])],
   ["live-transcript", new Set(["POST"])],
+  ["processing-heartbeat", new Set(["POST"])],
   ["transcribe", new Set(["POST"])],
   ["transcribe-fast", new Set(["POST"])],
   ["transcribe-chunk", new Set(["POST"])],

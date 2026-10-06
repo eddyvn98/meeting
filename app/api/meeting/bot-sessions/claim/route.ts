@@ -3,7 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { serializeMeetingBotSession } from "@/lib/meeting/bot/serialize";
 import type { MeetingBotStatus } from "@/lib/meeting/bot/types";
 import { isBotRunnerRequest, runnerId } from "../_auth";
-import { CAPTURE_INTERRUPTED_PREFIX } from "@/lib/meeting/audio/finalizeRetry";
+import {
+  CAPTURE_INTERRUPTED_PREFIX,
+  canMarkCaptureInterrupted,
+} from "@/lib/meeting/audio/finalizeRetry";
 
 export const runtime = "nodejs";
 
@@ -15,8 +18,9 @@ const DEFAULT_MAX_CONTINUATIONS = 2;
 const DEFAULT_SCHEDULE_LATE_GRACE_MS = 10 * 60_000;
 const DEFAULT_CALENDAR_LATE_GRACE_MS = 10 * 60_000;
 // A Meeting left in PROCESSING for longer than this (measured from its
-// updatedAt, which finalize/route.ts always bumps when it flips the status)
-// never got a terminal signal from either the local-STT processing effect
+// updatedAt, which finalize/route.ts bumps and the active processing client
+// refreshes through /processing-heartbeat) never got a terminal signal from
+// either the local-STT processing effect
 // or scripts/meeting-bot-runner.mjs's own bounded wait — most likely the
 // browser tab/process that was supposed to drive it died. Recovered the
 // same way the runner's own timeout recovers: force mock-complete so the
@@ -105,17 +109,27 @@ export async function POST(req: NextRequest) {
         if (failed.count === 1) {
           let needsContinuation = true;
           if (session.meetingId) {
+            // Serialize with chunk publication/finalization. A stale heartbeat
+            // may be discovered while the recorder's final request is already
+            // merging audio; that FINALIZING lease owns the Meeting state.
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-audio:${session.meetingId}`}))`;
             const linkedMeeting = await tx.meeting.findUnique({
               where: { id: session.meetingId },
-              select: { status: true },
+              select: { status: true, failureReason: true },
             });
-            if (linkedMeeting?.status === "PROCESSING" || linkedMeeting?.status === "READY") {
-              needsContinuation = false;
-            } else {
+            if (linkedMeeting && canMarkCaptureInterrupted(linkedMeeting)) {
               await tx.meeting.updateMany({
                 where: { id: session.meetingId, status: "UPLOADING" },
-                data: { status: "FAILED", failureReason: `${CAPTURE_INTERRUPTED_PREFIX}The meeting bot stopped reporting while recording.` },
+                data: {
+                  status: "FAILED",
+                  failureReason: `${CAPTURE_INTERRUPTED_PREFIX}The meeting bot stopped reporting while recording.`,
+                },
               });
+            } else if (linkedMeeting) {
+              // FINALIZING / PROCESSING / READY (or another terminal state)
+              // means the existing recording already has an owner. Starting a
+              // continuation here would duplicate a meeting that is finishing.
+              needsContinuation = false;
             }
           }
 
@@ -165,10 +179,20 @@ export async function POST(req: NextRequest) {
           data: { status: "FAILED", runnerId: null, endedAt: now, errorMessage: "The runner stopped before finalizing the recording." },
         });
         if (failed.count === 1 && session.meetingId) {
-          await tx.meeting.updateMany({
-            where: { id: session.meetingId, status: "UPLOADING" },
-            data: { status: "FAILED", failureReason: `${CAPTURE_INTERRUPTED_PREFIX}The runner stopped before finalizing the recording.` },
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-audio:${session.meetingId}`}))`;
+          const linkedMeeting = await tx.meeting.findUnique({
+            where: { id: session.meetingId },
+            select: { status: true, failureReason: true },
           });
+          if (linkedMeeting && canMarkCaptureInterrupted(linkedMeeting)) {
+            await tx.meeting.updateMany({
+              where: { id: session.meetingId, status: "UPLOADING" },
+              data: {
+                status: "FAILED",
+                failureReason: `${CAPTURE_INTERRUPTED_PREFIX}The runner stopped before finalizing the recording.`,
+              },
+            });
+          }
         }
       }
     });
