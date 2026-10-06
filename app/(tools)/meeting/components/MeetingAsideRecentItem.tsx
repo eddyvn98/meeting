@@ -183,7 +183,7 @@ export function MeetingAsideRecentItem({
 					</span>
 				)}
 			</Link>
-			{(!meeting.sharedWithMe || groups !== undefined) && (
+			{(!meeting.sharedWithMe || (groups !== undefined && !meeting.attendeeOnlyAccess)) && (
 				<>
 					{/* Zero-width until the row is hovered/focused or the menu is open, so
 					    revealing "..." squeezes the title instead of covering the share icon. */}
@@ -209,7 +209,7 @@ export function MeetingAsideRecentItem({
 										<Pencil className="mr-2 h-3.5 w-3.5" /> Rename
 									</DropdownMenuItem>
 								)}
-								{groups && (
+								{groups && !meeting.attendeeOnlyAccess && (
 									<DropdownMenuSub>
 										<DropdownMenuSubTrigger>Move to group</DropdownMenuSubTrigger>
 										<DropdownMenuSubContent>
