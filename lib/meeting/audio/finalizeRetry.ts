@@ -13,6 +13,7 @@
 export const FINALIZE_FAILURE_PREFIX = "Finalize failed (your audio is saved, finalize again): ";
 export const CAPTURE_INTERRUPTED_PREFIX = "Capture interrupted (uploaded audio is saved, finalize available audio): ";
 export const FINALIZING_PREFIX = "Finalizing recording since: ";
+export const DEFAULT_FINALIZE_LEASE_MS = 20 * 60_000;
 
 export function isFinalizeInProgress(meeting: { status: string; failureReason: string | null }): boolean {
   return meeting.status === "UPLOADING" && Boolean(meeting.failureReason?.startsWith(FINALIZING_PREFIX));
@@ -22,6 +23,19 @@ export function finalizeLeaseStartedAt(meeting: { failureReason: string | null }
   if (!meeting.failureReason?.startsWith(FINALIZING_PREFIX)) return null;
   const value = Date.parse(meeting.failureReason.slice(FINALIZING_PREFIX.length).trim());
   return Number.isFinite(value) ? value : null;
+}
+
+export function isFinalizeLeaseStale(
+  meeting: { status: string; failureReason: string | null },
+  nowMs = Date.now(),
+  leaseMs = DEFAULT_FINALIZE_LEASE_MS,
+): boolean {
+  if (!isFinalizeInProgress(meeting)) return false;
+  const startedAt = finalizeLeaseStartedAt(meeting);
+  return startedAt === null ||
+    !Number.isFinite(leaseMs) ||
+    leaseMs <= 0 ||
+    nowMs - startedAt >= leaseMs;
 }
 
 export function isRetryableFinalizeFailure(meeting: { status: string; failureReason: string | null }): boolean {
