@@ -194,10 +194,9 @@ export function createMeetingRecorderRuntime({
       return false;
     }
 
-    console.log(
-      `[meeting-bot] session ${session.id} processing timed out after ${timeoutMs}ms; forcing mock-complete.`,
+    console.error(
+      `[meeting-bot] session ${session.id} processing timed out after ${timeoutMs}ms; preserving audio and marking the run retryable.`,
     );
-    await requestContext.post(`${meetingUrl}/mock-complete`).catch(() => undefined);
     return true;
   }
 
