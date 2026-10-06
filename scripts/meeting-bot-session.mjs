@@ -44,8 +44,9 @@ export function createBotSessionRunner(config) {
     browserChannel, browserExecutable, headless, requireMediaOff, pollMs,
     lobbyTimeoutMs, reconnectTimeoutMs, rejoinWindowMs, rejoinAttemptMs,
     aloneTimeoutMs, initialAloneGraceMs, maxDurationMs, audioInitialWarnMs, audioSilenceWarnMs,
+    controlOutageGraceMs, shouldShutdown = () => false,
   } = config;
-  const control = createSessionControl({ api, emit, runnerId });
+  const control = createSessionControl({ api, emit, runnerId, controlOutageGraceMs });
 
   function setIdentityStorageState(value) {
     identityStorageState = value || undefined;
@@ -372,6 +373,10 @@ export function createBotSessionRunner(config) {
       let reconnectingSince = null;
       let lastAudioRecoveryAt = null;
       while (true) {
+        if (shouldShutdown()) {
+          exitMessage = "The bot runner is shutting down gracefully.";
+          break;
+        }
         if (!recorderRuntime.isAlive(recorder)) {
           const error = new Error("Recorder browser crashed while the meeting was active.");
           error.code = "RECORDER_CRASHED";
