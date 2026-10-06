@@ -75,6 +75,23 @@ export async function DELETE(req: NextRequest, { params }: { params: { meetingId
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const activeBotSession = await prisma.meetingBotSession.findUnique({
+    where: { meetingId: meeting.id },
+    select: { status: true },
+  });
+  if (
+    activeBotSession &&
+    ["CLAIMED", "JOINING", "LOBBY", "JOINED", "CAPTURING", "STOP_REQUESTED"].includes(activeBotSession.status)
+  ) {
+    return NextResponse.json(
+      {
+        error: "This meeting is still controlled by the meeting bot. Stop the bot and wait for recording finalization before deleting it.",
+        code: "MEETING_BOT_ACTIVE",
+      },
+      { status: 409 },
+    );
+  }
+
   await prisma.meeting.delete({ where: { id: params.meetingId } });
   await deleteMeetingAudioDir(params.meetingId);
   return NextResponse.json({ ok: true });
