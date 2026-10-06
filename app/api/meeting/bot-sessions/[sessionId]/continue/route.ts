@@ -58,6 +58,7 @@ export async function POST(
       source: parent.source,
       sourceKey,
       scheduledAt: null,
+      attendeeEmails: parent.attendeeEmails,
       errorMessage: "Automatic continuation after an interrupted bot session.",
     },
   });
