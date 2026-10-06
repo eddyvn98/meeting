@@ -6,6 +6,7 @@ import {
   nextMeetingScheduleRun,
 } from "@/lib/meeting/bot/recurrence";
 import { sameBotOccurrence } from "@/lib/meeting/bot/sessionKeys";
+import { meetingBotScheduleLockKey } from "@/lib/meeting/bot/scheduleLock";
 
 export const runtime = "nodejs";
 
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
 
   for (const candidate of due) {
     await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-bot-schedule:${candidate.id}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${meetingBotScheduleLockKey(candidate.id)}))`;
       const schedule = await tx.meetingBotSchedule.findUnique({ where: { id: candidate.id } });
       if (!schedule?.enabled || !schedule.nextRunAt || schedule.nextRunAt > dispatchBefore) return;
 
