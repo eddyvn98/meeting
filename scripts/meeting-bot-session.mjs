@@ -4,6 +4,10 @@ import { createSessionControl } from "./meeting-bot-control.mjs";
 import { maybeRecoverSilentAudio } from "./meeting-bot-audio-watch.mjs";
 import { readTeamsRosterSnapshot } from "./meeting-bot-roster.mjs";
 import {
+  readOutlookMeetingAttendeeEmails,
+  readTeamsParticipantEmails,
+} from "./meeting-bot-participant-identities.mjs";
+import {
   initialAloneState,
   isAloneFromCount,
   isMaxDurationExceeded,
@@ -29,6 +33,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 const ROSTER_PERSIST_MS = 30_000;
+const IDENTITY_PROBE_MS = 60_000;
 const MAX_SPEAKER_OBSERVATIONS = 5_000;
 export function createBotSessionRunner(config) {
   const {
@@ -114,16 +119,63 @@ export function createBotSessionRunner(config) {
       await heartbeat.update("CAPTURING", { meetingId: recorder.meetingId });
       const captureStartedAtMs = Date.now();
       const rosterNames = new Map();
+      const attendeeEmails = new Set(
+        Array.isArray(session.attendeeEmails)
+          ? session.attendeeEmails.map((email) => String(email).trim().toLowerCase()).filter(Boolean)
+          : [],
+      );
       const speakerObservations = [];
       let nextRosterPersistAt = 0;
+      let nextIdentityProbeAt = 0;
+      let identityProbeAttempts = 0;
+      let identityWarningIssued = false;
+      let identityDirty = false;
 
-      const sampleRoster = async () => {
+      const mergeAttendeeEmails = (emails) => {
+        const before = attendeeEmails.size;
+        for (const value of emails || []) {
+          const email = typeof value === "string" ? value.trim().toLowerCase() : "";
+          if (email) attendeeEmails.add(email);
+        }
+        if (attendeeEmails.size > before) identityDirty = true;
+      };
+
+      // Authenticated mode can reuse the same Microsoft browser session in a
+      // second tab to inspect the Outlook event. This is a non-blocking
+      // fallback: recording/STT must never depend on Outlook UI stability.
+      if (teamsRuntime.authenticated) {
+        void readOutlookMeetingAttendeeEmails(teamsRuntime.context, session)
+          .then(mergeAttendeeEmails)
+          .catch(() => undefined);
+      }
+
+      const sampleRoster = async ({ probeIdentities = false } = {}) => {
         const roster = await readTeamsRosterSnapshot(teamsRuntime.page, {
           selfDisplayName: teamsDisplayName,
         });
         for (const name of roster.participantNames) {
           const key = name.trim().toLocaleLowerCase();
           if (key && !rosterNames.has(key)) rosterNames.set(key, name.trim());
+        }
+        if (probeIdentities && roster.participantNames.length > 0) {
+          identityProbeAttempts += 1;
+          const emails = await readTeamsParticipantEmails(teamsRuntime.page, {
+            participantNames: roster.participantNames,
+            maxProfiles: 6,
+          }).catch(() => []);
+          mergeAttendeeEmails(emails);
+          if (
+            teamsRuntime.authenticated &&
+            attendeeEmails.size === 0 &&
+            identityProbeAttempts >= 3 &&
+            !identityWarningIssued
+          ) {
+            identityWarningIssued = true;
+            console.warn(
+              `[meeting-bot] session ${session.id}: participant email extraction is degraded; ` +
+              "recording/STT continues, but automatic shared-room access may be incomplete.",
+            );
+          }
         }
         if (roster.activeSpeakerNames.length > 0) {
           speakerObservations.push({
@@ -137,10 +189,12 @@ export function createBotSessionRunner(config) {
       };
       const rosterPayload = () => ({
         participantNames: [...rosterNames.values()],
+        attendeeEmails: [...attendeeEmails.values()],
         speakerObservations: [...speakerObservations],
       });
 
-      await sampleRoster().catch(() => undefined);
+      await sampleRoster({ probeIdentities: true }).catch(() => undefined);
+      nextIdentityProbeAt = Date.now() + IDENTITY_PROBE_MS;
       let aloneState = initialAloneState();
       let seenOtherParticipant = false;
       let reconnectingSince = null;
@@ -216,7 +270,9 @@ export function createBotSessionRunner(config) {
           break;
         }
         const nowMs = Date.now();
-        await sampleRoster().catch(() => undefined);
+        const probeIdentities = nowMs >= nextIdentityProbeAt;
+        await sampleRoster({ probeIdentities }).catch(() => undefined);
+        if (probeIdentities) nextIdentityProbeAt = nowMs + IDENTITY_PROBE_MS;
         if (isMaxDurationExceeded(captureStartedAtMs, nowMs, maxDurationMs)) {
           exitMessage = "The bot reached the maximum configured meeting duration.";
           break;
@@ -265,12 +321,15 @@ export function createBotSessionRunner(config) {
           exitMessage = error instanceof Error ? error.message : "The bot was removed during audio recovery.";
           break;
         }
-        const persistRoster = nowMs >= nextRosterPersistAt;
+        const persistRoster = nowMs >= nextRosterPersistAt || identityDirty;
         await heartbeat.update("CAPTURING", {
           meetingId: recorder.meetingId,
           ...(persistRoster ? rosterPayload() : {}),
         });
-        if (persistRoster) nextRosterPersistAt = nowMs + ROSTER_PERSIST_MS;
+        if (persistRoster) {
+          nextRosterPersistAt = nowMs + ROSTER_PERSIST_MS;
+          identityDirty = false;
+        }
         await sleep(pollMs);
       }
       const recordedMs = Date.now() - captureStartedAtMs;

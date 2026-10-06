@@ -31,7 +31,7 @@ Every signed-in attendee whose email is present in the Graph calendar occurrence
 
 The unattended bot is a Playwright Teams Web runner, not a Microsoft Graph Communications media bot. The Teams DOM roster only provides best-effort display names and must not be used as the authorization identity source.
 
-Shared-room authorization comes from Outlook/Microsoft Graph calendar attendee email addresses captured by `scripts/meeting-bot-calendar.mjs` and stored on `MeetingBotSession.attendeeEmails`.
+Shared-room authorization comes from trusted attendee email identities stored on `MeetingBotSession.attendeeEmails`. The browser bot can now populate them directly from visible Teams profile/contact cards and, in authenticated mode, Outlook Web Calendar. Microsoft Graph Calendar remains an optional additional source rather than a requirement.
 
 The occurrence identity remains the existing Graph source key:
 
@@ -72,9 +72,11 @@ All authorized viewers receive the same persisted transcript segments. Translati
 
 ## Important limitation
 
-Automatic attendee membership currently requires a calendar-backed bot session whose Graph event exposes attendee email addresses. A manually pasted Teams URL has no reliable attendee email identity source, so it cannot safely grant automatic room access merely from Teams Web display names.
+Automatic attendee membership requires an email identity that the bot can actually observe. A display name alone is never enough. Authenticated mode has the best coverage because Teams profile cards and Outlook Web may expose internal email addresses; guest mode may only expose names.
 
-Do not replace this rule with broad company-wide live-meeting visibility and do not infer authorization from participant display names.
+If no source exposes an email, recording and STT continue normally but automatic shared-room access can be incomplete. Do not replace this rule with broad company-wide live-meeting visibility and do not infer authorization from participant display names.
+
+See `docs/browser-participant-identity.md` for source priority and resilience behavior.
 
 ### Recovery boundary
 

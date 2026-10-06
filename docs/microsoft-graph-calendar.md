@@ -1,4 +1,6 @@
-# Microsoft Graph dedicated bot-mailbox integration
+# Optional Microsoft Graph dedicated bot-mailbox integration
+
+Microsoft Graph is optional. The Playwright runner can also collect attendee emails directly from Teams profile/contact cards and, in authenticated mode, Outlook Web Calendar. Use Graph only when administrator-approved calendar access is available or desired.
 
 ## Intended workflow
 
