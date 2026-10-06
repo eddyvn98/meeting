@@ -14,14 +14,6 @@ const DEFAULT_START_GRACE_MS = 60_000;
 const DEFAULT_MAX_CONTINUATIONS = 2;
 const DEFAULT_SCHEDULE_LATE_GRACE_MS = 10 * 60_000;
 const DEFAULT_CALENDAR_LATE_GRACE_MS = 10 * 60_000;
-// A Meeting left in PROCESSING for longer than this (measured from its
-// updatedAt, which finalize/route.ts always bumps when it flips the status)
-// never got a terminal signal from either the local-STT processing effect
-// or scripts/meeting-bot-runner.mjs's own bounded wait — most likely the
-// browser tab/process that was supposed to drive it died. Recovered the
-// same way the runner's own timeout recovers: force mock-complete so the
-// meeting reaches a retryable terminal state instead of staying stuck.
-const DEFAULT_PROCESSING_STALE_MS = 2 * 60 * 60_000;
 
 function envDuration(name: string, fallback: number): number {
   const value = Number(process.env[name]);
@@ -109,8 +101,17 @@ export async function POST(req: NextRequest) {
               where: { id: session.meetingId },
               select: { status: true, failureReason: true },
             });
-            if (linkedMeeting?.status === "PROCESSING" || linkedMeeting?.status === "READY") {
+            if (linkedMeeting?.status === "READY") {
               needsContinuation = false;
+            } else if (linkedMeeting?.status === "PROCESSING") {
+              needsContinuation = false;
+              await tx.meeting.update({
+                where: { id: session.meetingId },
+                data: {
+                  status: "FAILED",
+                  failureReason: "Processing stalled after the meeting bot runner stopped. The original recording is preserved; retry processing from the meeting.",
+                },
+              });
             } else if (linkedMeeting && !isFinalizeInProgress(linkedMeeting)) {
               await tx.meeting.updateMany({
                 where: { id: session.meetingId, status: "UPLOADING" },
@@ -169,7 +170,15 @@ export async function POST(req: NextRequest) {
             where: { id: session.meetingId },
             select: { status: true, failureReason: true },
           });
-          if (linkedMeeting && !isFinalizeInProgress(linkedMeeting)) {
+          if (linkedMeeting?.status === "PROCESSING") {
+            await tx.meeting.update({
+              where: { id: session.meetingId },
+              data: {
+                status: "FAILED",
+                failureReason: "Processing stalled after the meeting bot runner stopped. The original recording is preserved; retry processing from the meeting.",
+              },
+            });
+          } else if (linkedMeeting && !isFinalizeInProgress(linkedMeeting)) {
             await tx.meeting.updateMany({
               where: { id: session.meetingId, status: "UPLOADING" },
               data: { status: "FAILED", failureReason: `${CAPTURE_INTERRUPTED_PREFIX}The runner stopped before finalizing the recording.` },
@@ -180,7 +189,6 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  await recoverStaleProcessingMeetings(now);
 
   const candidate = await prisma.meetingBotSession.findFirst({
     where: {
@@ -203,25 +211,4 @@ export async function POST(req: NextRequest) {
 
   const session = await prisma.meetingBotSession.findUniqueOrThrow({ where: { id: candidate.id } });
   return NextResponse.json(serializeMeetingBotSession(session));
-}
-
-/**
- * Recovery for a Meeting stuck in PROCESSING with nothing left to drive it
- * forward — the mirror image of scripts/meeting-bot-runner.mjs's own
- * processing-wait timeout, for the cases that timeout can't cover: a
- * manually recorded/uploaded meeting (no bot session at all), or a bot
- * session whose runner process died between finalize and its own timeout
- * firing. Runs on every claim poll (best-effort, never blocks claiming),
- * override the deadline with MEETING_PROCESSING_STALE_MS.
- */
-async function recoverStaleProcessingMeetings(now: Date): Promise<void> {
-  const staleMs = envDuration("MEETING_PROCESSING_STALE_MS", DEFAULT_PROCESSING_STALE_MS);
-  const staleBefore = new Date(now.getTime() - staleMs);
-  await prisma.meeting.updateMany({
-    where: { status: "PROCESSING", updatedAt: { lt: staleBefore } },
-    data: {
-      status: "FAILED",
-      failureReason: "Processing stalled. The original recording is preserved; retry processing from the meeting.",
-    },
-  });
 }
