@@ -9,6 +9,10 @@ import { parseSpeakerObservations, sanitizeParticipantNames } from "@/lib/meetin
 import { sanitizeMeetingAttendeeEmails } from "@/lib/meeting/bot/attendeeEmails";
 import type { Prisma } from "@prisma/client";
 import { notifyLiveRoomStarted } from "@/lib/meeting/notify";
+import {
+  CAPTURE_INTERRUPTED_PREFIX,
+  canMarkCaptureInterrupted,
+} from "@/lib/meeting/audio/finalizeRetry";
 
 export const runtime = "nodejs";
 
@@ -116,10 +120,28 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
     }
     const nextSession = await tx.meetingBotSession.findUniqueOrThrow({ where: { id: session.id } });
     if (status === "FAILED" && meetingId) {
-      await tx.meeting.updateMany({
-        where: { id: meetingId, status: { in: ["UPLOADING", "PROCESSING"] } },
-        data: { status: "FAILED", failureReason },
+      // Share the same advisory lock used by chunk publication/finalization so
+      // a runner failure cannot race a finalize lease claim. A runner failure
+      // is only allowed to fail an open capture; FINALIZING and PROCESSING are
+      // owned by the recorder/processing pipeline and must remain untouched.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`meeting-audio:${meetingId}`}))`;
+      const linkedMeeting = await tx.meeting.findUnique({
+        where: { id: meetingId },
+        select: { status: true, failureReason: true },
       });
+      if (linkedMeeting && canMarkCaptureInterrupted(linkedMeeting)) {
+        await tx.meeting.updateMany({
+          where: {
+            id: meetingId,
+            status: "UPLOADING",
+            failureReason: linkedMeeting.failureReason,
+          },
+          data: {
+            status: "FAILED",
+            failureReason: `${CAPTURE_INTERRUPTED_PREFIX}${failureReason}`,
+          },
+        });
+      }
     }
     return nextSession;
   }).catch(async (error) => {
