@@ -13,6 +13,9 @@ describe("meeting bot recorder scope", () => {
     expect(isBotRecorderRequestAllowed("/api/meeting/meeting-a", "GET", baseSession)).toBe(true);
     expect(isBotRecorderRequestAllowed("/api/meeting/meeting-a/chunks", "POST", baseSession)).toBe(true);
     expect(isBotRecorderRequestAllowed("/api/meeting/meeting-a/finalize", "POST", baseSession)).toBe(true);
+    expect(isBotRecorderRequestAllowed("/api/meeting/meeting-a/transcribe-fast", "POST", baseSession)).toBe(true);
+    expect(isBotRecorderRequestAllowed("/api/meeting/meeting-a/transcript", "POST", baseSession)).toBe(true);
+    expect(isBotRecorderRequestAllowed("/api/meeting/voice-profiles", "GET", baseSession)).toBe(true);
     expect(isBotRecorderRequestAllowed("/api/meeting/meeting-b", "GET", baseSession)).toBe(false);
     expect(isBotRecorderRequestAllowed("/api/meeting/meeting-b/chunks", "POST", baseSession)).toBe(false);
   });
@@ -23,6 +26,10 @@ describe("meeting bot recorder scope", () => {
     expect(isBotRecorderRequestAllowed("/api/meeting/bot-sessions", "GET", baseSession)).toBe(false);
     expect(isBotRecorderRequestAllowed("/api/meeting/notifications", "GET", baseSession)).toBe(false);
     expect(isBotRecorderRequestAllowed("/api/meeting/groups", "GET", baseSession)).toBe(false);
+    expect(isBotRecorderRequestAllowed("/api/meeting/meeting-a/shares", "POST", baseSession)).toBe(false);
+    expect(isBotRecorderRequestAllowed("/api/meeting/meeting-a/public-share", "POST", baseSession)).toBe(false);
+    expect(isBotRecorderRequestAllowed("/api/meeting/meeting-a/comments", "POST", baseSession)).toBe(false);
+    expect(isBotRecorderRequestAllowed("/api/meeting/voice-profiles", "POST", baseSession)).toBe(false);
   });
 
   it("allows exactly one root POST before the recorder is bound", () => {
