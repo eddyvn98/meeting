@@ -93,6 +93,12 @@ export function graphEventToSyncItem(event, config = null) {
     config?.botEmail &&
     attendeeAddresses.includes(config.botEmail),
   );
+  // The meeting room belongs to the Teams occurrence, not to the person who
+  // invited the bot. Preserve the real attendee identities so every signed-in
+  // attendee can open the same live/result meeting without a manual share.
+  const attendeeEmails = [...new Set(
+    attendeeAddresses.filter((address) => address !== config?.botEmail),
+  )];
 
   return {
     eventId: String(event.id),
@@ -103,6 +109,7 @@ export function graphEventToSyncItem(event, config = null) {
     scheduledAt,
     organizerEmail,
     ownerEmail: organizerAllowed ? organizerEmail : null,
+    attendeeEmails,
     organizerAllowed,
     invited,
     cancelled: event.isCancelled === true || event.isAllDay === true,
