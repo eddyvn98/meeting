@@ -108,4 +108,73 @@ describe("meeting bot session control", () => {
     heartbeat.stop();
   });
 
+  it("does not advance acknowledged lifecycle state after a failed write", async () => {
+    const calls = [];
+    let attempt = 0;
+    const emit = vi.fn(async (_sessionId, status, extra) => {
+      calls.push({ status, expectedStatus: extra.expectedStatus });
+      attempt += 1;
+      if (attempt === 1) throw new Error("temporary write failure");
+      return { status, runnerId: "runner-a" };
+    });
+    const control = createSessionControl({
+      api: vi.fn(),
+      emit,
+      runnerId: "runner-a",
+    });
+    const heartbeat = control.createHeartbeat("session-1");
+
+    await expect(heartbeat.update("JOINING")).rejects.toThrow("temporary write failure");
+    await expect(heartbeat.update("JOINING")).resolves.toMatchObject({ status: "JOINING" });
+    heartbeat.stop();
+
+    expect(calls).toEqual([
+      { status: "JOINING", expectedStatus: "CLAIMED" },
+      { status: "JOINING", expectedStatus: "CLAIMED" },
+    ]);
+  });
+
+  it("tracks control-plane outage grace independently per session", async () => {
+    let now = 1_000;
+    const api = vi.fn(async (path) => {
+      if (path.includes("session-2")) return { status: "CAPTURING", runnerId: "runner-a" };
+      throw new Error("network down");
+    });
+    const control = createSessionControl({
+      api,
+      emit: vi.fn(),
+      runnerId: "runner-a",
+      controlOutageGraceMs: 5_000,
+      now: () => now,
+    });
+
+    await expect(control.shouldStop("session-1")).resolves.toBe(false);
+    now += 4_000;
+    await expect(control.shouldStop("session-2")).resolves.toBe(false);
+    now += 1_000;
+    await expect(control.shouldStop("session-1")).rejects.toMatchObject({
+      code: "CONTROL_PLANE_UNAVAILABLE",
+    });
+    await expect(control.shouldStop("session-2")).resolves.toBe(false);
+  });
+
+  it("fails closed when the control plane stays unreachable past the grace period", async () => {
+    let now = 1_000;
+    const control = createSessionControl({
+      api: vi.fn(async () => { throw new Error("network down"); }),
+      emit: vi.fn(),
+      runnerId: "runner-a",
+      controlOutageGraceMs: 5_000,
+      now: () => now,
+    });
+
+    await expect(control.shouldStop("session-1")).resolves.toBe(false);
+    now += 4_999;
+    await expect(control.shouldStop("session-1")).resolves.toBe(false);
+    now += 1;
+    await expect(control.shouldStop("session-1")).rejects.toMatchObject({
+      code: "CONTROL_PLANE_UNAVAILABLE",
+    });
+  });
+
 });

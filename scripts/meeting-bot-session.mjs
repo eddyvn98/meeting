@@ -44,8 +44,9 @@ export function createBotSessionRunner(config) {
     browserChannel, browserExecutable, headless, requireMediaOff, pollMs,
     lobbyTimeoutMs, reconnectTimeoutMs, rejoinWindowMs, rejoinAttemptMs,
     aloneTimeoutMs, initialAloneGraceMs, maxDurationMs, audioInitialWarnMs, audioSilenceWarnMs,
+    controlOutageGraceMs, shouldShutdown = () => false,
   } = config;
-  const control = createSessionControl({ api, emit, runnerId });
+  const control = createSessionControl({ api, emit, runnerId, controlOutageGraceMs });
 
   function setIdentityStorageState(value) {
     identityStorageState = value || undefined;
@@ -81,7 +82,7 @@ export function createBotSessionRunner(config) {
       headless,
       env: { ...process.env, PULSE_SINK: sinkName },
       args: [
-        "--no-sandbox",
+        ...(process.env.MEETING_BOT_DISABLE_CHROMIUM_SANDBOX === "true" ? ["--no-sandbox"] : []),
         "--disable-dev-shm-usage",
         "--autoplay-policy=no-user-gesture-required",
         "--disable-features=AudioServiceOutOfProcess",
@@ -107,7 +108,7 @@ export function createBotSessionRunner(config) {
     const joined = await waitForTeamsJoin(runtime.page, {
       sessionId: session.id,
       updateStatus: heartbeat.update,
-      shouldStop: control.shouldStop,
+      shouldStop: async (sessionId) => shouldShutdown() || await control.shouldStop(sessionId),
       timeoutMs,
     });
     if (joined) {
@@ -348,6 +349,10 @@ export function createBotSessionRunner(config) {
       let reconnectingSince = null;
       let lastAudioRecoveryAt = null;
       while (true) {
+        if (shouldShutdown()) {
+          exitMessage = "The bot runner is shutting down gracefully.";
+          break;
+        }
         if (!recorderRuntime.isAlive(recorder)) {
           const error = new Error("Recorder browser crashed while the meeting was active.");
           error.code = "RECORDER_CRASHED";

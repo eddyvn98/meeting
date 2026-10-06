@@ -156,9 +156,12 @@ export async function readTeamsPage(page) {
   if (page.isClosed()) return { state: "PAGE_CLOSED", body: "" };
   if (isTeamsAuthUrl(page.url())) return { state: "AUTH_REQUIRED", body: "" };
   const body = await page.locator("body").innerText().catch(() => "");
+  // Teams is a SPA and often leaves old lobby/reconnect/error copy mounted in
+  // hidden DOM. A visible in-call Leave/End control is a stronger signal than
+  // stale body text, so prefer it before text heuristics.
+  if (await teamsJoined(page)) return { state: "JOINED", body };
   const state = detectTeamsPageState(body);
   if (state) return { state, body };
-  if (await teamsJoined(page)) return { state: "JOINED", body };
   return { state: "UNKNOWN", body };
 }
 

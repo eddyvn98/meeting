@@ -146,7 +146,7 @@ export function createMeetingRecorderRuntime({
       (response) =>
         response.request().method() === "POST" &&
         /\/api\/meeting\/[^/]+\/finalize$/.test(new URL(response.url()).pathname),
-      { timeout: 120_000 },
+      { timeout: 11 * 60_000 },
     );
     await endButton.click();
     const response = await finalizeResponse;

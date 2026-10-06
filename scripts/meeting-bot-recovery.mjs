@@ -32,16 +32,20 @@ export function createTeamsRecovery({
   rejoinWindowMs,
   rejoinAttemptMs,
 }) {
-  async function reconnectTeams(current, session, heartbeat, sinkName, storageState) {
+  async function reconnectTeams(current, session, heartbeat, sinkName, storageState, absoluteDeadline) {
     await closeTeams(current);
-    const deadline = Date.now() + reconnectTimeoutMs;
+    const deadline = Math.min(
+      Date.now() + reconnectTimeoutMs,
+      Number.isFinite(absoluteDeadline) ? absoluteDeadline : Number.POSITIVE_INFINITY,
+    );
     let lastError;
 
     while (Date.now() < deadline) {
       let next;
       try {
         next = await launchTeams(sinkName, storageState);
-        if (await joinTeams(next, session, heartbeat, Math.min(60_000, reconnectTimeoutMs))) {
+        const remainingMs = Math.max(1, deadline - Date.now());
+        if (await joinTeams(next, session, heartbeat, Math.min(60_000, reconnectTimeoutMs, remainingMs))) {
           return next;
         }
         await closeTeams(next);
@@ -53,7 +57,7 @@ export function createTeamsRecovery({
         if (["TEAMS_JOIN_REJECTED", "TEAMS_REMOVED", "TEAMS_ACCESS_DENIED", "TEAMS_AUTH_REQUIRED", "TEAMS_INVALID_LINK"].includes(code)) {
           throw error;
         }
-        await sleep(5_000);
+        await sleep(Math.min(5_000, Math.max(0, deadline - Date.now())));
       }
     }
 
@@ -88,9 +92,12 @@ export function createTeamsRecovery({
 
     while (Date.now() < deadline) {
       try {
-        runtime = await reconnectTeams(runtime, session, heartbeat, sinkName, storageState);
+        runtime = await reconnectTeams(runtime, session, heartbeat, sinkName, storageState, deadline);
         if (!runtime) return null;
-        if (await confirmSomeoneElseIsPresent(runtime.page)) return runtime;
+        const remainingMs = Math.max(0, deadline - Date.now());
+        if (remainingMs > 0 && await confirmSomeoneElseIsPresent(runtime.page, Math.min(30_000, remainingMs))) {
+          return runtime;
+        }
       } catch (error) {
         const code = errorCode(error);
         if (["TEAMS_JOIN_REJECTED", "TEAMS_REMOVED", "TEAMS_ACCESS_DENIED", "TEAMS_AUTH_REQUIRED", "TEAMS_INVALID_LINK"].includes(code)) {

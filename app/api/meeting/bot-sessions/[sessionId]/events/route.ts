@@ -139,7 +139,9 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
       `added=${updated.attendeeEmails.length - previousAttendeeCount} totalEmails=${updated.attendeeEmails.length}`,
     );
   }
-  if (status === "CAPTURING" && meetingId) {
+  const firstCaptureTransition = status === "CAPTURING" && session.status !== "CAPTURING";
+  const discoveredAttendee = updated.attendeeEmails.length > previousAttendeeCount;
+  if (status === "CAPTURING" && meetingId && (firstCaptureTransition || discoveredAttendee)) {
     const meeting = await prisma.meeting.findUnique({ where: { id: meetingId } });
     if (meeting) {
       await notifyLiveRoomStarted(meeting, updated.attendeeEmails);

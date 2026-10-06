@@ -34,6 +34,15 @@ const browserChannel = process.env.MEETING_BOT_BROWSER_CHANNEL || undefined;
 const browserExecutable = process.env.MEETING_BOT_BROWSER_EXECUTABLE || undefined;
 const headless = process.env.MEETING_BOT_HEADLESS !== "false";
 const requireMediaOff = process.env.MEETING_BOT_REQUIRE_MEDIA_OFF !== "false";
+let shuttingDown = false;
+
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.on(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[meeting-bot] ${signal} received; stopping claims and finalizing active sessions.`);
+  });
+}
 
 const recorderRuntime = createMeetingRecorderRuntime({
   baseUrl,
@@ -136,6 +145,11 @@ const sessionRunner = createBotSessionRunner({
     process.env.MEETING_BOT_AUDIO_SILENCE_MS,
     3 * 60_000,
   ),
+  controlOutageGraceMs: nonNegativeNumber(
+    process.env.MEETING_BOT_CONTROL_OUTAGE_GRACE_MS,
+    60_000,
+  ),
+  shouldShutdown: () => shuttingDown,
   identityStorageState: undefined,
 });
 
@@ -172,7 +186,7 @@ async function main() {
   let nextScheduleDispatch = 0;
   let calendarSyncInFlight = null;
 
-  while (true) {
+  while (!shuttingDown) {
     if (calendarSync && !calendarSyncInFlight && Date.now() >= nextCalendarSync) {
       nextCalendarSync = Date.now() + graphSyncMs;
       calendarSyncInFlight = calendarSync().finally(() => {
@@ -190,7 +204,7 @@ async function main() {
       nextScheduleDispatch = Date.now() + schedulePollMs;
     }
 
-    while (active.size < maxConcurrency) {
+    while (!shuttingDown && active.size < maxConcurrency) {
       let session;
       try {
         session = await api("/api/meeting/bot-sessions/claim", { method: "POST" });
@@ -216,6 +230,14 @@ async function main() {
     }
 
     await sleep(pollMs);
+  }
+
+  if (calendarSyncInFlight) {
+    await calendarSyncInFlight.catch(() => undefined);
+  }
+  if (active.size > 0) {
+    console.log(`[meeting-bot] waiting for ${active.size} active session(s) to finalize.`);
+    await Promise.allSettled([...active.values()]);
   }
 }
 
