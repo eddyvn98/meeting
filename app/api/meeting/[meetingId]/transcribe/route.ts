@@ -53,8 +53,8 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
   }
 
   const sampleRate = Number(req.headers.get("x-sample-rate"));
-  if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
-    return NextResponse.json({ error: "x-sample-rate header is required" }, { status: 400 });
+  if (!Number.isFinite(sampleRate) || sampleRate < 8_000 || sampleRate > 48_000) {
+    return NextResponse.json({ error: "x-sample-rate must be between 8000 and 48000 Hz" }, { status: 400 });
   }
 
   const contentLength = Number(req.headers.get("content-length") ?? "0");
@@ -68,6 +68,9 @@ export async function POST(req: NextRequest, { params }: { params: { meetingId: 
   }
   if (pcmBuffer.byteLength > MAX_PCM_BYTES) {
     return NextResponse.json({ error: "Audio chunk too large" }, { status: 413 });
+  }
+  if (pcmBuffer.byteLength % 2 !== 0) {
+    return NextResponse.json({ error: "PCM body must contain complete 16-bit samples" }, { status: 400 });
   }
 
   for (const [key, cached] of resultCache) {
