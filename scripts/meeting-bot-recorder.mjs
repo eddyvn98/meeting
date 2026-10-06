@@ -13,6 +13,7 @@ export function createMeetingRecorderRuntime({
   processingTimeoutMaxMs,
   processingTimeoutDefaultMs,
   computeProcessingTimeoutMs,
+  headless = true,
 }) {
   const isInsecureLocalBaseUrl = baseUrl.startsWith("http://");
 
@@ -47,7 +48,7 @@ export function createMeetingRecorderRuntime({
     const browser = await chromium.launch({
       ...(browserChannel ? { channel: browserChannel } : {}),
       ...(browserExecutable ? { executablePath: browserExecutable } : {}),
-      headless: process.env.MEETING_BOT_HEADLESS === "true",
+      headless,
       env: { ...process.env, PULSE_SOURCE: sourceName },
       args: [
         "--no-sandbox",
