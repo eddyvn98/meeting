@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
       exp: now + TOKEN_TTL_SEC,
     },
     secret,
+    maxAge: TOKEN_TTL_SEC,
   });
 
   const secure = req.nextUrl.protocol === "https:";
