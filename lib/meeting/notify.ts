@@ -9,6 +9,7 @@
 import type { Meeting } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { emailConfig, sendNotificationEmail } from "./notifyEmail";
+import { liveRoomNotificationDedupeKey } from "./notificationDedupe";
 
 export type MeetingNotificationType = "COMMENT" | "REPLY" | "SHARE_INVITE" | "LIVE_ROOM";
 
@@ -118,7 +119,7 @@ export async function notifyLiveRoomStarted(
       email,
       type: "LIVE_ROOM" as const,
       body: `Live STT is ready for "${meeting.title}". Open the shared room to follow the transcript in real time.`,
-      dedupeKey: `live-room:${meeting.id}:${email}`,
+      dedupeKey: liveRoomNotificationDedupeKey(meeting.id, email),
     }));
 
     await deliver(meeting, pending, {
