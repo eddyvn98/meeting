@@ -18,7 +18,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { POST } from "../../app/api/meeting/bot-sessions/stt-token/route";
+import { POST, recorderTokenTtlSec } from "../../app/api/meeting/bot-sessions/stt-token/route";
 
 const TOKEN_TTL_SEC = 6 * 60 * 60;
 
@@ -51,9 +51,11 @@ describe("meeting bot recorder token", () => {
   afterEach(() => {
     delete process.env.MEETING_BOT_RUNNER_TOKEN;
     delete process.env.NEXTAUTH_SECRET;
+    delete process.env.MEETING_BOT_MAX_DURATION_MS;
+    delete process.env.MEETING_BOT_RECORDER_TOKEN_TTL_SEC;
   });
 
-  it("keeps recorder JWT lifetime bounded to six hours", async () => {
+  it("keeps the default recorder JWT lifetime at six hours", async () => {
     const response = await POST(request());
 
     expect(response.status).toBe(200);
@@ -70,5 +72,16 @@ describe("meeting bot recorder token", () => {
     const body = await response.json();
     expect(body.token).toBe("encoded-token");
     expect(Date.parse(body.expiresAt) / 1000 - options.token.iat).toBe(TOKEN_TTL_SEC);
+  });
+  it("extends the token beyond six hours when a longer meeting is explicitly allowed", () => {
+    expect(recorderTokenTtlSec({
+      MEETING_BOT_MAX_DURATION_MS: String(8 * 60 * 60_000),
+    } as NodeJS.ProcessEnv)).toBe(8 * 60 * 60 + 30 * 60);
+  });
+
+  it("caps recorder JWT lifetime at 24 hours", () => {
+    expect(recorderTokenTtlSec({
+      MEETING_BOT_MAX_DURATION_MS: String(48 * 60 * 60_000),
+    } as NodeJS.ProcessEnv)).toBe(24 * 60 * 60);
   });
 });
