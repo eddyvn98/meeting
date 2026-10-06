@@ -14,6 +14,7 @@ import {
   isMaxDurationExceeded,
   nextAloneState,
   parseParticipantCount,
+  participantCountFromRoster,
 } from "./meeting-bot-lifecycle.mjs";
 import {
   createTeamsRecovery,
@@ -463,9 +464,7 @@ export function createBotSessionRunner(config) {
         }
         const participantCount =
           parseParticipantCount(snapshot.body) ??
-          (rosterSample?.currentParticipantNames?.length
-            ? rosterSample.currentParticipantNames.length
-            : undefined);
+          participantCountFromRoster(rosterSample?.currentParticipantNames?.length);
         if (typeof participantCount === "number" && participantCount > 1) {
           seenOtherParticipant = true;
         }
