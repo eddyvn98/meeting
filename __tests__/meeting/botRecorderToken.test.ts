@@ -18,7 +18,8 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { POST, recorderTokenTtlSec } from "../../app/api/meeting/bot-sessions/stt-token/route";
+import { POST } from "../../app/api/meeting/bot-sessions/stt-token/route";
+import { recorderTokenTtlSec } from "../../lib/meeting/bot/recorderTokenTtl";
 
 const TOKEN_TTL_SEC = 6 * 60 * 60;
 
