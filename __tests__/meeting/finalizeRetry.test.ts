@@ -5,6 +5,7 @@ import {
   FINALIZE_FAILURE_PREFIX,
   FINALIZING_PREFIX,
   isFinalizeInProgress,
+  isFinalizeLeaseStale,
   isRetryableFinalizeFailure,
 } from "../../lib/meeting/audio/finalizeRetry";
 
@@ -38,5 +39,14 @@ describe("meeting finalize retry states", () => {
     };
     expect(isFinalizeInProgress(meeting)).toBe(true);
     expect(acceptsAudio(meeting)).toBe(false);
+  });
+  it("distinguishes a live finalize lease from a stale reclaimable lease", () => {
+    const meeting = {
+      status: "UPLOADING",
+      failureReason: `${FINALIZING_PREFIX}2026-10-06T08:00:00.000Z`,
+    };
+    const startedAt = Date.parse("2026-10-06T08:00:00.000Z");
+    expect(isFinalizeLeaseStale(meeting, startedAt + 19 * 60_000)).toBe(false);
+    expect(isFinalizeLeaseStale(meeting, startedAt + 20 * 60_000)).toBe(true);
   });
 });
