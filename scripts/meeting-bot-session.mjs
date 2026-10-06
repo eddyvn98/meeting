@@ -140,7 +140,7 @@ export function createBotSessionRunner(config) {
       // Authenticated mode can reuse the same Microsoft browser session in a
       // second tab to inspect the Outlook event. This is a non-blocking
       // fallback: recording/STT must never depend on Outlook UI stability.
-      if (teamsRuntime.authenticated && attendeeEmails.size === 0) {
+      if (teamsRuntime.authenticated) {
         void readOutlookMeetingAttendeeEmails(teamsRuntime.context, session)
           .then(mergeAttendeeEmails)
           .catch(() => undefined);
