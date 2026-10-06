@@ -75,8 +75,6 @@ export interface Meeting {
    *  MeetingShare). These rows are readable but do not currently have a
    *  per-user folder-placement record, so the sidebar hides move-to-group. */
   attendeeOnlyAccess?: boolean;
-  /** True while the linked Teams bot is actively capturing this meeting. */
-  isLive?: boolean;
   /** Sidebar folder this meeting is filed under for the current caller, or
    *  null when ungrouped. For owned meetings this comes from Meeting.groupId;
    *  for shared-with-me rows GET /api/meeting overlays MeetingShare.groupId so
